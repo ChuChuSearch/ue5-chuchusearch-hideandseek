@@ -749,14 +749,11 @@ void AMyPlayerController::ShowGhostUI()
 
     GhostUIWidgetInstance->AddToViewport();
 
-    FInputModeGameAndUI Mode;
-    Mode.SetWidgetToFocus(GhostUIWidgetInstance->TakeWidget());
-    Mode.SetHideCursorDuringCapture(false);
-    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    FInputModeGameOnly Mode;
     SetInputMode(Mode);
-    bShowMouseCursor = true;
-    bEnableClickEvents = true;
-    bEnableMouseOverEvents = true;
+    bShowMouseCursor = false;
+    bEnableClickEvents = false;
+    bEnableMouseOverEvents = false;
 
     UpdateGhostUI();
 }

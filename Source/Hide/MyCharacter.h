@@ -21,6 +21,7 @@ public:
 
     void RequestPossessProp(APropBase* Prop);
     void RequestReleaseProp();
+    void ForceReleasePossessedProp_Server();
     bool ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPropClass);
 
     void ToggleLocked();
@@ -29,9 +30,13 @@ public:
     bool IsPossessing() const { return PossessedProp != nullptr; }
     APropBase* GetPossessedProp() const { return PossessedProp; }
     bool IsLocked() const { return bLocked; }
+    bool IsForcedPossessLocked() const { return bForcedPossessLock; }
 
     UPROPERTY(EditDefaultsOnly, Category = "Possess")
     float MaxPossessDistance = 250.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Possess")
+    float ForcedPossessLockSeconds = 5.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "Rotate")
     float LockedRotateDegPerSec = 200.f;
@@ -94,6 +99,8 @@ private:
 
     void ApplyPossessVisuals(bool bPossessingNow);
     void ApplyMoveIgnoreForProp(APropBase* NewProp);
+    void ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock);
+    void EndForcedPossessLock();
 
     float GetCapsuleHalfHeight() const;
     FVector PropWorldLocationForCharacter(APropBase* Prop) const;
@@ -105,6 +112,9 @@ private:
 
     UPROPERTY(ReplicatedUsing = OnRep_Locked)
     bool bLocked = false;
+
+    UPROPERTY(Replicated)
+    bool bForcedPossessLock = false;
 
     UPROPERTY()
     APropBase* LastPossessedProp = nullptr;
@@ -159,6 +169,7 @@ private:
     bool bSeekerAttackOnCooldown = false;
 
     FTimerHandle TH_SeekerAttackCooldown;
+    FTimerHandle TH_ForcedPossessLock;
 
     // --- Elimination ---
     UPROPERTY(ReplicatedUsing = OnRep_Eliminated)

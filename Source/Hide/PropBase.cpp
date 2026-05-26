@@ -100,6 +100,25 @@ void APropBase::SetPossessedState(bool bPossessed)
 {
     if (!StaticMesh) return;
 
+    TArray<UPrimitiveComponent*> PrimitiveComponents;
+    GetComponents<UPrimitiveComponent>(PrimitiveComponents);
+    for (UPrimitiveComponent* Prim : PrimitiveComponents)
+    {
+        if (!Prim || Prim == StaticMesh)
+        {
+            continue;
+        }
+
+        const bool bIsOutlineComponent = Prim->GetName().Contains(TEXT("Outline"));
+        if (bIsOutlineComponent)
+        {
+            Prim->SetVisibility(bPossessed, true);
+            Prim->SetHiddenInGame(!bPossessed, true);
+        }
+
+        Prim->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
     if (bPossessed)
     {
         StaticMesh->SetEnableGravity(false);

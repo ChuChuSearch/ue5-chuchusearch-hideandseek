@@ -36,6 +36,7 @@ void AMyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
     DOREPLIFETIME(AMyCharacter, PossessedProp);
     DOREPLIFETIME(AMyCharacter, bLocked);
+    DOREPLIFETIME(AMyCharacter, bForcedPossessLock);
     DOREPLIFETIME(AMyCharacter, bIsSeeker);
     DOREPLIFETIME(AMyCharacter, bIsDestroying);
     DOREPLIFETIME(AMyCharacter, bDestroyOnCooldown);
@@ -62,6 +63,12 @@ void AMyCharacter::RequestPossessProp(APropBase* Prop)
 void AMyCharacter::RequestReleaseProp()
 {
     ServerReleaseProp();
+}
+
+void AMyCharacter::ForceReleasePossessedProp_Server()
+{
+    if (!HasAuthority()) return;
+    ReleasePossessedPropInternal(true);
 }
 
 void AMyCharacter::ToggleLocked()
@@ -177,11 +184,23 @@ bool AMyCharacter::IsReleaseLocationClear(APropBase* Prop, const FVector& Locati
 
 void AMyCharacter::ServerReleaseProp_Implementation()
 {
+    ReleasePossessedPropInternal(false);
+}
+
+void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
+{
+    if (bForcedPossessLock && !bIgnoreForcedPossessLock) return;
     if (!PossessedProp) return;
 
     APropBase* Old = PossessedProp;
     PossessedProp = nullptr;
     bLocked = false;
+    bForcedPossessLock = false;
+
+    if (GetWorld())
+    {
+        GetWorldTimerManager().ClearTimer(TH_ForcedPossessLock);
+    }
 
     if (Old)
     {
@@ -211,6 +230,14 @@ void AMyCharacter::ServerReleaseProp_Implementation()
             }
         }
     }
+}
+
+void AMyCharacter::EndForcedPossessLock()
+{
+    if (!HasAuthority()) return;
+
+    bForcedPossessLock = false;
+    ForceNetUpdate();
 }
 
 void AMyCharacter::ServerToggleLocked_Implementation()
@@ -387,7 +414,7 @@ bool AMyCharacter::ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPr
     const FVector SpawnLoc = PossessedProp->GetActorLocation();
     const FRotator SpawnRot = PossessedProp->GetActorRotation();
 
-    ServerReleaseProp();
+    ReleasePossessedPropInternal(true);
 
     FActorSpawnParameters Params;
     Params.Owner = GetController();
@@ -400,6 +427,19 @@ bool AMyCharacter::ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPr
     }
 
     ServerTryPossess(NewProp);
+    if (PossessedProp == NewProp && ForcedPossessLockSeconds > 0.0f)
+    {
+        bForcedPossessLock = true;
+        GetWorldTimerManager().SetTimer(
+            TH_ForcedPossessLock,
+            this,
+            &AMyCharacter::EndForcedPossessLock,
+            ForcedPossessLockSeconds,
+            false
+        );
+        ForceNetUpdate();
+    }
+
     return PossessedProp == NewProp;
 }
 
@@ -426,7 +466,7 @@ void AMyCharacter::SetIsSeeker_Server(bool bNewIsSeeker)
     {
         if (PossessedProp)
         {
-            ServerReleaseProp();
+            ReleasePossessedPropInternal(true);
         }
         bLocked = false;
         OnRep_Locked();
@@ -692,6 +732,8 @@ void AMyCharacter::OnRep_SeekerHitCount()
 void AMyCharacter::DetachAndSyncRelease(APropBase* Prop)
 {
     if (!Prop) return;
+
+    Prop->SetPossessedState(false);
 
     if (HasAuthority())
     {

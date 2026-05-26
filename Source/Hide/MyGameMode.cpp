@@ -106,6 +106,11 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
     const FVector SpawnLoc = EliminatedRunner->GetActorLocation();
     const FRotator SpawnRot = EliminatedRunner->GetActorRotation();
 
+    if (EliminatedRunner->IsPossessing())
+    {
+        EliminatedRunner->ForceReleasePossessedProp_Server();
+    }
+
     EliminatedRunner->ApplyEliminatedVisuals();
 
     FActorSpawnParameters Params;

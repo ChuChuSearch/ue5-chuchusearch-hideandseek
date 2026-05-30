@@ -1,4 +1,4 @@
-﻿#include "PropBase.h"
+#include "PropBase.h"
 #include "Components/StaticMeshComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "MyCharacter.h"
@@ -18,8 +18,8 @@ APropBase::APropBase()
     SetRootComponent(StaticMesh);
     StaticMesh->SetIsReplicated(true);
 
-    StaticMesh->SetSimulatePhysics(true);
-    StaticMesh->SetEnableGravity(true);
+    StaticMesh->SetSimulatePhysics(false);
+    StaticMesh->SetEnableGravity(false);
     StaticMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     StaticMesh->SetCollisionProfileName(TEXT("BlockAllDynamic"));
     StaticMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
@@ -34,6 +34,8 @@ void APropBase::BeginPlay()
     {
         StaticMesh->SetRenderCustomDepth(true);
         StaticMesh->SetCustomDepthStencilValue(0);
+        StaticMesh->SetSimulatePhysics(false);
+        StaticMesh->SetEnableGravity(false);
     }
 
     if (HasAuthority())
@@ -145,10 +147,29 @@ void APropBase::SetPossessedState(bool bPossessed)
         StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
         StaticMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
 
-        StaticMesh->SetEnableGravity(true);
-        StaticMesh->SetSimulatePhysics(true);
-        StaticMesh->WakeAllRigidBodies();
+        StaticMesh->SetSimulatePhysics(false);
+        StaticMesh->SetEnableGravity(false);
     }
+}
+
+void APropBase::FinalizeReleaseTransform(const FVector& Location, const FRotator& Rotation)
+{
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
+    SetPossessedState(false);
+
+    if (UStaticMeshComponent* MeshComp = GetStaticMesh())
+    {
+        MeshComp->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        MeshComp->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        MeshComp->SetSimulatePhysics(false);
+        MeshComp->SetEnableGravity(false);
+    }
+}
+
+void APropBase::MulticastFinalizeReleaseTransform_Implementation(FVector_NetQuantize Location, FRotator Rotation)
+{
+    FinalizeReleaseTransform(Location, Rotation);
 }
 
 float APropBase::GetBottomOffsetFromActorLocation() const

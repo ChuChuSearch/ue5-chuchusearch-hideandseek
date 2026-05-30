@@ -131,13 +131,46 @@ FVector AMyCharacter::PropReleaseWorldLocation(APropBase* Prop) const
 
     for (const FVector& Candidate : Candidates)
     {
-        if (IsReleaseLocationClear(Prop, Candidate))
+        const FVector GroundedCandidate = ProjectReleaseLocationToGround(Prop, Candidate);
+        if (IsReleaseLocationClear(Prop, GroundedCandidate))
         {
-            return Candidate;
+            return GroundedCandidate;
         }
     }
 
-    return Base + Forward * 90.f;
+    return ProjectReleaseLocationToGround(Prop, Base + Forward * 90.f);
+}
+
+FVector AMyCharacter::ProjectReleaseLocationToGround(APropBase* Prop, const FVector& Location) const
+{
+    if (!Prop || !GetWorld())
+    {
+        return Location;
+    }
+
+    const float PropBottomOffset = Prop->GetBottomOffsetFromActorLocation();
+    const FVector TraceStart = Location + FVector(0.f, 0.f, 20.f);
+    const FVector TraceEnd = Location - FVector(0.f, 0.f, 3000.f);
+
+    FHitResult Hit;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(PropReleaseGroundTrace), false);
+    Params.AddIgnoredActor(this);
+    Params.AddIgnoredActor(Prop);
+
+    const bool bHitGround = GetWorld()->LineTraceSingleByChannel(
+        Hit,
+        TraceStart,
+        TraceEnd,
+        ECC_Visibility,
+        Params
+    );
+
+    if (!bHitGround)
+    {
+        return Location;
+    }
+
+    return FVector(Location.X, Location.Y, Hit.ImpactPoint.Z + PropBottomOffset + 2.f);
 }
 
 bool AMyCharacter::IsReleaseLocationClear(APropBase* Prop, const FVector& Location) const
@@ -204,14 +237,11 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
 
     if (Old)
     {
-        Old->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-        Old->SetActorLocation(PropReleaseWorldLocation(Old), false, nullptr, ETeleportType::TeleportPhysics);
+        const FVector ReleaseLocation = PropReleaseWorldLocation(Old);
+        const FRotator ReleaseRotation = Old->GetActorRotation();
+        Old->FinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
+        Old->MulticastFinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
         Old->SetPossessedNet(false);
-        if (UStaticMeshComponent* OldMesh = Old->GetStaticMesh())
-        {
-            OldMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
-            OldMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-        }
         Old->ReleaseClaim(this);
         Old->ForceNetUpdate();
     }
@@ -733,21 +763,21 @@ void AMyCharacter::DetachAndSyncRelease(APropBase* Prop)
 {
     if (!Prop) return;
 
-    Prop->SetPossessedState(false);
+    const FVector ReleaseLocation = PropReleaseWorldLocation(Prop);
+    const FRotator ReleaseRotation = Prop->GetActorRotation();
+    Prop->FinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
 
     if (HasAuthority())
     {
         Prop->ReleaseClaim(this);
+        Prop->MulticastFinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
         Prop->SetPossessedNet(false);
-        if (UStaticMeshComponent* PropMesh = Prop->GetStaticMesh())
-        {
-            PropMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
-            PropMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-        }
+        Prop->ForceNetUpdate();
     }
-
-    Prop->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-    Prop->SetActorLocation(PropReleaseWorldLocation(Prop), false, nullptr, ETeleportType::TeleportPhysics);
+    else
+    {
+        Prop->SetPossessedState(false);
+    }
 
     if (PossessedProp == Prop)
     {

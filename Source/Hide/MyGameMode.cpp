@@ -238,7 +238,13 @@ void AMyGameMode::RegisterPhase1PossessedProp(APropBase* Prop)
     }
 
     AMyGameState* GS = GetGameState<AMyGameState>();
-    if (!GS || GS->GetGamePhase() != EGamePhase::Phase1)
+    if (!GS)
+    {
+        return;
+    }
+
+    const EGamePhase Phase = GS->GetGamePhase();
+    if (Phase != EGamePhase::HideTime && Phase != EGamePhase::Phase1)
     {
         return;
     }

@@ -28,6 +28,10 @@ public:
     void SetPossessedState(bool bPossessed);
     void SetPossessedNet(bool bNew);
     void SetPossessionBanned_Server(bool bNewBanned);
+    void FinalizeReleaseTransform(const FVector& Location, const FRotator& Rotation);
+
+    UFUNCTION(NetMulticast, Reliable)
+    void MulticastFinalizeReleaseTransform(FVector_NetQuantize Location, FRotator Rotation);
 
     UStaticMeshComponent* GetStaticMesh() const { return StaticMesh; }
     float GetBottomOffsetFromActorLocation() const;

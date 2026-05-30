@@ -105,6 +105,7 @@ private:
     float GetCapsuleHalfHeight() const;
     FVector PropWorldLocationForCharacter(APropBase* Prop) const;
     FVector PropReleaseWorldLocation(APropBase* Prop) const;
+    FVector ProjectReleaseLocationToGround(APropBase* Prop, const FVector& Location) const;
     bool IsReleaseLocationClear(APropBase* Prop, const FVector& Location) const;
 
     UPROPERTY(ReplicatedUsing = OnRep_PossessedProp)

@@ -60,6 +60,7 @@ protected:
 
     bool IsPlacementValid_Local(const FVector& Location, const FRotator& Rotation) const;
     bool IsNearAnyLivePlayer(const FVector& Location, float Radius) const;
+    void UpdatePlacementRotation(float DeltaSeconds);
 
     UFUNCTION(Server, Reliable)
     void ServerRequestPlaceRespawnProp(int32 RespawnIndex, FVector_NetQuantize Location, FRotator Rotation);
@@ -112,6 +113,9 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
     float PreviewGridSnap = 0.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
+    float PlacementRotationSpeedDegrees = 120.f;
 
     UPROPERTY(Replicated)
     float LastPlacementServerWorldTime = -1000.f;

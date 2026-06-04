@@ -12,6 +12,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
@@ -46,6 +47,7 @@ void AGhostCharacter::Tick(float DeltaSeconds)
 
     if (IsLocallyControlled() && bPlacementMode)
     {
+        UpdatePlacementRotation(DeltaSeconds);
         UpdatePlacementPreview();
     }
 }
@@ -294,6 +296,32 @@ bool AGhostCharacter::IsPlacementValid_Local(const FVector& Location, const FRot
     return true;
 }
 
+void AGhostCharacter::UpdatePlacementRotation(float DeltaSeconds)
+{
+    const APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC)
+    {
+        return;
+    }
+
+    float Direction = 0.f;
+    if (PC->IsInputKeyDown(EKeys::Q))
+    {
+        Direction -= 1.f;
+    }
+    if (PC->IsInputKeyDown(EKeys::E))
+    {
+        Direction += 1.f;
+    }
+
+    if (FMath::IsNearlyZero(Direction))
+    {
+        return;
+    }
+
+    PlacementYaw = FRotator::ClampAxis(PlacementYaw + Direction * PlacementRotationSpeedDegrees * DeltaSeconds);
+}
+
 void AGhostCharacter::UpdatePlacementPreview()
 {
     const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
@@ -472,10 +500,11 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
     Params.SpawnCollisionHandlingOverride =
         ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
 
+    FTransform SpawnTransform(Rotation, Location, FVector::OneVector);
+
     AActor* Spawned = GetWorld()->SpawnActor<AActor>(
         Info.PropClass,
-        Location,
-        Rotation,
+        SpawnTransform,
         Params
     );
 
@@ -487,8 +516,17 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
 
     if (APropBase* SpawnedProp = Cast<APropBase>(Spawned))
     {
+        if (UStaticMeshComponent* MeshComp = SpawnedProp->GetStaticMesh())
+        {
+            MeshComp->SetWorldScale3D(Info.Transform.GetScale3D());
+        }
+
         SpawnedProp->SetReplicates(true);
         SpawnedProp->SetReplicateMovement(true);
+    }
+    else
+    {
+        Spawned->SetActorScale3D(Info.Transform.GetScale3D());
     }
 
     ++PlacedCount;

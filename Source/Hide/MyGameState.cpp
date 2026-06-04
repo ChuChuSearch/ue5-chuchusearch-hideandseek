@@ -5,6 +5,7 @@
 #include "MyGameMode.h"
 #include "MyPlayerState.h"
 #include "PropBase.h"
+#include "Components/StaticMeshComponent.h"
 
 AMyGameState::AMyGameState()
 {
@@ -82,6 +83,13 @@ void AMyGameState::RegisterDestroyedProp(AActor* DestroyedProp)
     FRespawnPropInfo Info;
     Info.PropClass = DestroyedProp->GetClass();
     Info.Transform = DestroyedProp->GetActorTransform();
+    if (const APropBase* DestroyedPropBase = Cast<APropBase>(DestroyedProp))
+    {
+        if (const UStaticMeshComponent* MeshComp = DestroyedPropBase->GetStaticMesh())
+        {
+            Info.Transform.SetScale3D(MeshComp->GetComponentScale());
+        }
+    }
 
     RespawnList.Add(Info);
 

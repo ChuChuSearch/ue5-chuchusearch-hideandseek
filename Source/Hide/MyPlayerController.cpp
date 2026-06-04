@@ -742,18 +742,22 @@ void AMyPlayerController::ShowGhostUI()
 {
     if (!IsLocalController()) return;
     if (!WBP_GhostUI) return;
-    if (GhostUIWidgetInstance) return;
 
-    GhostUIWidgetInstance = CreateWidget<UUserWidget>(this, WBP_GhostUI);
-    if (!GhostUIWidgetInstance) return;
+    if (!GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance = CreateWidget<UUserWidget>(this, WBP_GhostUI);
+        if (!GhostUIWidgetInstance) return;
 
-    GhostUIWidgetInstance->AddToViewport();
+        GhostUIWidgetInstance->AddToViewport();
+    }
 
-    FInputModeGameOnly Mode;
+    FInputModeGameAndUI Mode;
+    Mode.SetHideCursorDuringCapture(false);
+    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
     SetInputMode(Mode);
-    bShowMouseCursor = false;
-    bEnableClickEvents = false;
-    bEnableMouseOverEvents = false;
+    bShowMouseCursor = true;
+    bEnableClickEvents = true;
+    bEnableMouseOverEvents = true;
 
     UpdateGhostUI();
 }

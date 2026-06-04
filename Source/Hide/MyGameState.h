@@ -89,6 +89,9 @@ public:
 
     bool SubmitPasswordCode(APlayerController* RequestPC, const TArray<int32>& InputCode, int32& OutCorrectCount, double& OutCooldownRemaining);
 
+    UFUNCTION(BlueprintCallable)
+    int32 CountRunnerTeamCollectedClues() const;
+
 protected:
     UPROPERTY(Replicated, BlueprintReadOnly)
     TArray<FRespawnPropInfo> RespawnList;
@@ -148,7 +151,6 @@ protected:
     int32 MaxVisibleRespawnProps = 3;
 
     void SelectRandomClueProps();
-    int32 CountRunnerTeamCollectedClues() const;
     double GetRunnerClueBasedCooldown() const;
     double GetServerTimeSeconds() const;
     bool RefreshVisibleRespawnList();

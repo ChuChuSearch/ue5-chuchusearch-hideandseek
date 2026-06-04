@@ -98,7 +98,7 @@ void AMyGameMode::HandleSeamlessTravelPlayer(AController*& C)
 
 void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
 {
-    if (!HasAuthority() || !IsValid(EliminatedRunner) || !GhostCharacterClass) return;
+    if (!HasAuthority() || !IsValid(EliminatedRunner)) return;
 
     AController* PC = EliminatedRunner->GetController();
     if (!PC) return;
@@ -113,6 +113,16 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
 
     EliminatedRunner->ApplyEliminatedVisuals();
 
+    if (!GhostCharacterClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("HandleRunnerEliminated: GhostCharacterClass is not set."));
+        if (!HasAnyActiveRunner())
+        {
+            EndGameWithWinner(EFinalRole::Seeker);
+        }
+        return;
+    }
+
     FActorSpawnParameters Params;
     Params.Owner = PC;
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -124,7 +134,15 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
         Params
     );
 
-    if (!Ghost) return;
+    if (!Ghost)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("HandleRunnerEliminated: Failed to spawn ghost character."));
+        if (!HasAnyActiveRunner())
+        {
+            EndGameWithWinner(EFinalRole::Seeker);
+        }
+        return;
+    }
 
     PC->Possess(Ghost);
 
@@ -134,17 +152,67 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
     {
         MPC->ClientFinalizeGhostTransition();
     }
+
+    if (!HasAnyActiveRunner())
+    {
+        EndGameWithWinner(EFinalRole::Seeker);
+    }
 }
 
 void AMyGameMode::HandleCodeVictory(EFinalRole WinningRole)
+{
+    EndGameWithWinner(WinningRole);
+}
+
+void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
 {
     if (!HasAuthority() || bGameEnded)
     {
         return;
     }
 
+    UE_LOG(LogTemp, Log, TEXT("EndGameWithWinner: WinningRole=%d"), static_cast<int32>(WinningRole));
+
     bGameEnded = true;
+
+    GetWorldTimerManager().ClearTimer(TH_GamePhase);
+
+    if (AMyGameState* GS = GetGameState<AMyGameState>())
+    {
+        GS->SetGamePhase_Server(EGamePhase::Ended, 0.0);
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        if (AMyPlayerController* MPC = Cast<AMyPlayerController>(It->Get()))
+        {
+            MPC->ClientShowGameResult(WinningRole);
+        }
+    }
+
     OnCodeVictory(WinningRole);
+    OnGamePhaseChanged(EGamePhase::Ended);
+}
+
+void AMyGameMode::NotifyRunnerReachedSpecialExit(AMyCharacter* Runner)
+{
+    if (!HasAuthority() || bGameEnded || !IsValid(Runner))
+    {
+        return;
+    }
+
+    if (Runner->IsSeeker() || Runner->IsEliminated())
+    {
+        return;
+    }
+
+    const AMyGameState* GS = GetGameState<AMyGameState>();
+    if (!GS || GS->CountRunnerTeamCollectedClues() < RequiredCluesForRunnerExit)
+    {
+        return;
+    }
+
+    EndGameWithWinner(EFinalRole::Runner);
 }
 
 void AMyGameMode::StartGameTimeline()
@@ -215,19 +283,7 @@ void AMyGameMode::EnterFeverTime()
 
 void AMyGameMode::EndGameByTime()
 {
-    if (!HasAuthority() || bGameEnded)
-    {
-        return;
-    }
-
-    bGameEnded = true;
-
-    if (AMyGameState* GS = GetGameState<AMyGameState>())
-    {
-        GS->SetGamePhase_Server(EGamePhase::Ended, 0.0);
-    }
-
-    OnGamePhaseChanged(EGamePhase::Ended);
+    EndGameWithWinner(EFinalRole::Runner);
 }
 
 void AMyGameMode::RegisterPhase1PossessedProp(APropBase* Prop)
@@ -280,6 +336,33 @@ void AMyGameMode::ClearPhase1PropBans()
 
     BannedPhase1Props.Empty();
 }
+
+bool AMyGameMode::HasAnyActiveRunner() const
+{
+    if (!GetWorld())
+    {
+        return false;
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        const APlayerController* PC = It->Get();
+        const AMyPlayerState* PS = PC ? PC->GetPlayerState<AMyPlayerState>() : nullptr;
+        if (!PS || PS->GetFinalRole() != EFinalRole::Runner)
+        {
+            continue;
+        }
+
+        const AMyCharacter* Character = Cast<AMyCharacter>(PC->GetPawn());
+        if (Character && !Character->IsEliminated())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void AMyGameMode::ResolveForcedSwapProps()
 {
     if (!HasAuthority())

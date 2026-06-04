@@ -860,3 +860,57 @@ void AMyPlayerController::ClientSetForcedSwapWarning_Implementation(bool bShowWa
         GameRoomWidgetInstance->ProcessEvent(Fn, &Params);
     }
 }
+
+void AMyPlayerController::ClientShowGameResult_Implementation(EFinalRole WinningRole)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    const AMyPlayerState* MPS = GetPlayerState<AMyPlayerState>();
+    const bool bWon = MPS && MPS->GetFinalRole() == WinningRole;
+
+    UE_LOG(LogTemp, Log, TEXT("ClientShowGameResult: WinningRole=%d, bWon=%s, ResultWidgetClass=%s"),
+        static_cast<int32>(WinningRole),
+        bWon ? TEXT("true") : TEXT("false"),
+        WBP_GameResult ? *WBP_GameResult->GetName() : TEXT("None"));
+
+    if (WBP_GameResult)
+    {
+        if (!GameResultWidgetInstance)
+        {
+            GameResultWidgetInstance = CreateWidget<UUserWidget>(this, WBP_GameResult);
+        }
+
+        if (GameResultWidgetInstance)
+        {
+            GameResultWidgetInstance->AddToViewport(1000);
+
+            if (UFunction* PlayResultFn = GameResultWidgetInstance->FindFunction(TEXT("PlayResult")))
+            {
+                struct FPlayResultParams
+                {
+                    EFinalRole WinningRole;
+                    bool bWon;
+                };
+
+                FPlayResultParams Params;
+                Params.WinningRole = WinningRole;
+                Params.bWon = bWon;
+                GameResultWidgetInstance->ProcessEvent(PlayResultFn, &Params);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("WBP_GameResult has no PlayResult function."));
+            }
+
+            bShowMouseCursor = true;
+            FInputModeUIOnly InputMode;
+            InputMode.SetWidgetToFocus(GameResultWidgetInstance->TakeWidget());
+            SetInputMode(InputMode);
+        }
+    }
+
+    OnGameResultReceived(WinningRole, bWon);
+}

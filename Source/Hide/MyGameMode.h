@@ -26,8 +26,12 @@ public:
     void SpawnPlayerAsRole(APlayerController* PC, bool bSeeker);
     void HandleRunnerEliminated(AMyCharacter* EliminatedRunner);
     void HandleCodeVictory(EFinalRole WinningRole);
+    void EndGameWithWinner(EFinalRole WinningRole);
     void RegisterPhase1PossessedProp(APropBase* Prop);
     bool IsPhase1PossessedProp(const APropBase* Prop) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Victory")
+    void NotifyRunnerReachedSpecialExit(AMyCharacter* Runner);
 
     UFUNCTION(BlueprintImplementableEvent, Category = "Victory")
     void OnCodeVictory(EFinalRole WinningRole);
@@ -69,6 +73,9 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Forced Swap")
     TArray<TSubclassOf<APropBase>> ForcedSwapPropClasses;
 
+    UPROPERTY(EditDefaultsOnly, Category = "Victory")
+    int32 RequiredCluesForRunnerExit = 3;
+
     virtual void PostSeamlessTravel() override;
     virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
@@ -81,6 +88,7 @@ protected:
     void EndGameByTime();
     void ResolveForcedSwapProps();
     void ClearPhase1PropBans();
+    bool HasAnyActiveRunner() const;
 
     FTimerHandle TH_GamePhase;
     TSet<TWeakObjectPtr<APropBase>> Phase1PossessedProps;

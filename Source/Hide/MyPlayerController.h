@@ -4,6 +4,7 @@
 #include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
 #include "Blueprint/UserWidget.h"
+#include "MyPlayerState.h"
 #include "MyPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -63,6 +64,12 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientSetForcedSwapWarning(bool bShowWarning, double RemainingSeconds);
+
+    UFUNCTION(Client, Reliable)
+    void ClientShowGameResult(EFinalRole WinningRole);
+
+    UFUNCTION(BlueprintImplementableEvent, Category = "Game Result")
+    void OnGameResultReceived(EFinalRole WinningRole, bool bWon);
 protected:
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputMappingContext* IMC_Default = nullptr;
@@ -160,6 +167,12 @@ private:
     UPROPERTY()
     UUserWidget* GhostUIWidgetInstance = nullptr;
     void ShowGhostUI();
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UUserWidget> WBP_GameResult = nullptr;
+
+    UPROPERTY()
+    UUserWidget* GameResultWidgetInstance = nullptr;
 };
 
 

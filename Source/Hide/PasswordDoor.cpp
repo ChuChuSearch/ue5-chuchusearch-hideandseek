@@ -8,7 +8,7 @@ APasswordDoor::APasswordDoor()
     bReplicates = true;
 
     BillboardComponent = CreateDefaultSubobject<UBillboardComponent>(TEXT("BillboardComponent"));
-    RootComponent = BillboardComponent;
+    //RootComponent = BillboardComponent;
 
     CustomSpriteTexture = nullptr;
 }

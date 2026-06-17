@@ -103,6 +103,7 @@ private:
     APasswordDoor* GetHoveredPasswordDoor() const;
     bool TryOpenPasswordInput();
     void UpdatePasswordInputState();
+    void BroadcastPasswordCooldownUpdated(double CooldownRemaining);
 
     UFUNCTION(Server, Reliable)
     void ServerSubmitPasswordCode(const TArray<int32>& InputCode);

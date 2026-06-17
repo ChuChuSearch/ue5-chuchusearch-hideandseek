@@ -14,6 +14,7 @@
 #include "WaitRoomGameMode.h"
 
 #include "Camera/CameraComponent.h"
+#include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/PrimitiveComponent.h"
 #include "TimerManager.h"
@@ -310,14 +311,55 @@ bool AMyPlayerController::TryOpenPasswordInput()
     if (!Door)
     {
         FHitResult Hit;
-        if (GetScreenRayHit(Hit, bShowMouseCursor))
+        if (GetHitResultUnderCursor(ECC_Visibility, true, Hit))
         {
             Door = Cast<APasswordDoor>(Hit.GetActor());
+            if (!Door && Hit.GetActor())
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("Password input cursor hit non-door actor: %s"), *Hit.GetActor()->GetName());
+            }
+        }
+    }
+
+    if (!Door)
+    {
+        FHitResult Hit;
+        if (GetScreenRayHit(Hit, false))
+        {
+            Door = Cast<APasswordDoor>(Hit.GetActor());
+            if (!Door && Hit.GetActor())
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("Password input center hit non-door actor: %s"), *Hit.GetActor()->GetName());
+            }
+        }
+    }
+
+    if (!Door)
+    {
+        TArray<AActor*> PasswordDoors;
+        UGameplayStatics::GetAllActorsOfClass(GetWorld(), APasswordDoor::StaticClass(), PasswordDoors);
+
+        float BestDistanceSq = TNumericLimits<float>::Max();
+        for (AActor* Actor : PasswordDoors)
+        {
+            APasswordDoor* Candidate = Cast<APasswordDoor>(Actor);
+            if (!Candidate || !Candidate->CanInteractFrom(MC))
+            {
+                continue;
+            }
+
+            const float DistanceSq = FVector::DistSquared(Candidate->GetActorLocation(), MC->GetActorLocation());
+            if (DistanceSq < BestDistanceSq)
+            {
+                BestDistanceSq = DistanceSq;
+                Door = Candidate;
+            }
         }
     }
 
     if (!Door || !Door->CanInteractFrom(MC))
     {
+        UE_LOG(LogTemp, Verbose, TEXT("Password input failed: no interactable PasswordDoor found."));
         return false;
     }
 
@@ -340,6 +382,24 @@ void AMyPlayerController::UpdatePasswordInputState()
         return;
     }
 
+    double CooldownRemaining = 0.0;
+    const AMyPlayerState* MyPS = GetPlayerState<AMyPlayerState>();
+    const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (MyPS && GS)
+    {
+        CooldownRemaining = GS->GetCodeInputCooldownRemaining(MyPS->GetFinalRole());
+    }
+
+    BroadcastPasswordCooldownUpdated(CooldownRemaining);
+}
+
+void AMyPlayerController::BroadcastPasswordCooldownUpdated(double CooldownRemaining)
+{
+    if (!IsLocalController() || !PasswordInputWidgetInstance)
+    {
+        return;
+    }
+
     static const FName FuncName(TEXT("OnPasswordCooldownUpdated"));
     if (UFunction* Fn = PasswordInputWidgetInstance->FindFunction(FuncName))
     {
@@ -349,14 +409,22 @@ void AMyPlayerController::UpdatePasswordInputState()
         };
 
         FPasswordCooldownUpdatedParams Params;
-        const AMyPlayerState* MyPS = GetPlayerState<AMyPlayerState>();
-        const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
-        if (MyPS && GS)
-        {
-            Params.CooldownRemaining = GS->GetCodeInputCooldownRemaining(MyPS->GetFinalRole());
-        }
+        Params.CooldownRemaining = CooldownRemaining;
 
         PasswordInputWidgetInstance->ProcessEvent(Fn, &Params);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Password widget has no OnPasswordCooldownUpdated event/function."));
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(
+                INDEX_NONE,
+                2.0f,
+                FColor::Red,
+                TEXT("WBP_PasswordInput: OnPasswordCooldownUpdated not found")
+            );
+        }
     }
 }
 
@@ -587,6 +655,8 @@ void AMyPlayerController::ShowPasswordInputUI()
 
         PasswordInputWidgetInstance->ProcessEvent(Fn, &Params);
     }
+
+    UpdatePasswordInputState();
 }
 
 void AMyPlayerController::ClosePasswordInputUI()
@@ -731,6 +801,8 @@ void AMyPlayerController::ClientReceivePasswordAttemptResult_Implementation(int3
 
         PasswordInputWidgetInstance->ProcessEvent(Fn, &Params);
     }
+
+    BroadcastPasswordCooldownUpdated(CooldownRemaining);
 }
 
 void AMyPlayerController::HideGameRoomUI()

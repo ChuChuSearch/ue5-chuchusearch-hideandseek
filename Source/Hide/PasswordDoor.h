@@ -4,7 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "PasswordDoor.generated.h"
 
-class UStaticMeshComponent;
+class UBillboardComponent;
 
 UCLASS()
 class HIDE_API APasswordDoor : public AActor
@@ -22,5 +22,9 @@ public:
 
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
-    UStaticMeshComponent* DoorMesh = nullptr;
+    UBillboardComponent* BillboardComponent;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Billboard Settings")
+    UTexture2D* CustomSpriteTexture;
+
 };

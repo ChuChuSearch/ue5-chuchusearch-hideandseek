@@ -7,9 +7,10 @@ APasswordDoor::APasswordDoor()
     PrimaryActorTick.bCanEverTick = false;
     bReplicates = true;
 
-    DoorMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DoorMesh"));
-    RootComponent = DoorMesh;
-    DoorMesh->SetCollisionProfileName(TEXT("BlockAll"));
+    BillboardComponent = CreateDefaultSubobject<UBillboardComponent>(TEXT("BillboardComponent"));
+    RootComponent = BillboardComponent;
+
+    CustomSpriteTexture = nullptr;
 }
 
 bool APasswordDoor::CanInteractFrom(const AActor* Interactor) const

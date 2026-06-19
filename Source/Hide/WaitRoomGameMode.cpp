@@ -115,7 +115,7 @@ FString AWaitRoomGameMode::BuildGameTravelURL() const
         return GameMapAsset.ToSoftObjectPath().GetLongPackageName();
     }
 
-    return TEXT("/Game/ThirdPerson/Levels/GameMap");
+    return TEXT("/Game/Game/Levels/GameMap");
 }
 
 void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)

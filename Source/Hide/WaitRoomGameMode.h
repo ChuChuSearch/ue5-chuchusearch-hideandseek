@@ -28,7 +28,7 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Travel")
     FString GameMapTravelURL =
-        TEXT("/Game/ThirdPerson/Levels/GameMap?game=/Game/ThirdPerson/Blueprints/GameMode/BP_MyGameMode.BP_MyGameMode_C");
+        TEXT("/Game/Game/Levels/GameMap?game=/Game/Game/Blueprints/GameMode/BP_MyGameMode.BP_MyGameMode_C");
 
 private:
     void EnsureHost();

@@ -76,6 +76,16 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Victory")
     int32 RequiredCluesForRunnerExit = 3;
 
+    UPROPERTY(EditDefaultsOnly, Category = "Testing|Return To Wait Room")
+    bool bAutoReturnToWaitRoom = true;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Testing|Return To Wait Room", meta = (ClampMin = "0.0"))
+    float ReturnToWaitRoomDelaySeconds = 10.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Testing|Return To Wait Room")
+    FString WaitRoomTravelURL =
+        TEXT("/Game/Game/Levels/WaitRoomMap?game=/Game/Game/Blueprints/Framework/GameMode/BP_WaitRoomGameMode.BP_WaitRoomGameMode_C");
+
     virtual void PostSeamlessTravel() override;
     virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
@@ -86,11 +96,13 @@ protected:
     void EnterPhase2();
     void EnterFeverTime();
     void EndGameByTime();
+    void ReturnToWaitRoom();
     void ResolveForcedSwapProps();
     void ClearPhase1PropBans();
     bool HasAnyActiveRunner() const;
 
     FTimerHandle TH_GamePhase;
+    FTimerHandle TH_ReturnToWaitRoom;
     TSet<TWeakObjectPtr<APropBase>> Phase1PossessedProps;
     TSet<TWeakObjectPtr<APropBase>> BannedPhase1Props;
 };

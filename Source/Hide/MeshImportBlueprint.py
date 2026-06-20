@@ -1,9 +1,9 @@
 import unreal
 
-SOURCE_MESH_DIR = "/Game/ThirdPerson/Blueprints/Main/Map/GameMap2"
-OUTPUT_BP_DIR = "/Game/ThirdPerson/Blueprints/Main/Props/Generated"
-TEMPLATE_BP = "/Game/ThirdPerson/Blueprints/Main/Props/BP_Prop_Template"
-OUTLINE_MATERIAL = "/Game/ThirdPerson/Blueprints/Main/Materials/Material_Outline"
+SOURCE_MESH_DIR = "/Game/Game/StaticMeshs/Props"
+OUTPUT_BP_DIR = "/Game/Game/Blueprints/Props"
+TEMPLATE_BP = "/Game/Game/Blueprints/Props/BP_Prop_Template"
+OUTLINE_MATERIAL = "/Game/Game/Materials/Material_Outline"
 MAIN_COMPONENT_NAME = "StaticMesh"
 OUTLINE_COMPONENT_NAME = "OutlineMesh"
 
@@ -28,6 +28,10 @@ if not asset_lib.does_directory_exist(OUTPUT_BP_DIR):
 
 def normalize_name(name):
     return str(name).lower().replace(" ", "").replace("_", "").replace("-", "")
+
+
+def get_number_group(asset_name):
+    return f"{(int(asset_name) // 100) * 100:03d}"
 
 
 def is_static_component_name(name):
@@ -251,7 +255,11 @@ for asset_data in mesh_assets:
     if not (len(mesh_name) == 3 and mesh_name.isdigit()):
         continue
 
-    new_bp_path = f"{OUTPUT_BP_DIR}/BP_Prop_{mesh_name}"
+    output_group_dir = f"{OUTPUT_BP_DIR}/{get_number_group(mesh_name)}"
+    if not asset_lib.does_directory_exist(output_group_dir):
+        asset_lib.make_directory(output_group_dir)
+
+    new_bp_path = f"{output_group_dir}/BP_Prop_{mesh_name}"
 
     was_existing = asset_lib.does_asset_exist(new_bp_path)
 

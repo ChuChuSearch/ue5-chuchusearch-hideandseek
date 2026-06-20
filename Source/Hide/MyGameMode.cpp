@@ -192,6 +192,37 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
 
     OnCodeVictory(WinningRole);
     OnGamePhaseChanged(EGamePhase::Ended);
+
+    if (bAutoReturnToWaitRoom)
+    {
+        if (ReturnToWaitRoomDelaySeconds <= 0.f)
+        {
+            ReturnToWaitRoom();
+        }
+        else
+        {
+            GetWorldTimerManager().SetTimer(
+                TH_ReturnToWaitRoom,
+                this,
+                &AMyGameMode::ReturnToWaitRoom,
+                ReturnToWaitRoomDelaySeconds,
+                false
+            );
+        }
+    }
+}
+
+void AMyGameMode::ReturnToWaitRoom()
+{
+    if (!HasAuthority() || !GetWorld() || WaitRoomTravelURL.IsEmpty())
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Returning all players to wait room: %s"), *WaitRoomTravelURL);
+
+    bUseSeamlessTravel = true;
+    GetWorld()->ServerTravel(WaitRoomTravelURL, false);
 }
 
 void AMyGameMode::NotifyRunnerReachedSpecialExit(AMyCharacter* Runner)

@@ -68,6 +68,9 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
 
+    UFUNCTION(Client, Reliable)
+    void ClientEnterWaitRoomUI();
+
     UFUNCTION(BlueprintImplementableEvent, Category = "Game Result")
     void OnGameResultReceived(EFinalRole WinningRole, bool bWon);
 protected:
@@ -156,9 +159,16 @@ private:
 
     void ShowGameRoomUI();
     void CloseGameRoomUI();
+    void UpdateGameRoomTeamStatus();
+    void UpdateGameTimeWidgets();
     void ShowPasswordInputUI();
     void ClosePasswordInputUI();
     void RefreshGameRoomCluesFromPlayerState();
+
+    float TeamStatusRefreshElapsed = 0.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    float TeamStatusRefreshInterval = 0.25f;
 
     AGhostCharacter* GetGhostCharacter() const;
 

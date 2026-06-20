@@ -3,6 +3,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "CluePickup.h"
 #include "MyGameMode.h"
+#include "MyCharacter.h"
 #include "MyPlayerState.h"
 #include "PropBase.h"
 #include "Components/StaticMeshComponent.h"
@@ -364,6 +365,36 @@ int32 AMyGameState::CountRunnerTeamCollectedClues() const
     return UniqueClues.Num();
 }
 
+void AMyGameState::GetActiveTeamCounts(int32& OutSeekerCount, int32& OutRunnerCount) const
+{
+    OutSeekerCount = 0;
+    OutRunnerCount = 0;
+
+    for (APlayerState* PS : PlayerArray)
+    {
+        const AMyPlayerState* MPS = Cast<AMyPlayerState>(PS);
+        if (!MPS)
+        {
+            continue;
+        }
+
+        const AMyCharacter* Character = Cast<AMyCharacter>(MPS->GetPawn());
+        if (!Character || Character->IsEliminated())
+        {
+            continue;
+        }
+
+        if (MPS->GetFinalRole() == EFinalRole::Seeker)
+        {
+            ++OutSeekerCount;
+        }
+        else if (MPS->GetFinalRole() == EFinalRole::Runner)
+        {
+            ++OutRunnerCount;
+        }
+    }
+}
+
 double AMyGameState::GetRunnerClueBasedCooldown() const
 {
     const int32 ClueCount = CountRunnerTeamCollectedClues();
@@ -423,6 +454,8 @@ bool AMyGameState::SubmitPasswordCode(APlayerController* RequestPC, const TArray
 
     if (bSuccess)
     {
+        UE_LOG(LogTemp, Log, TEXT("Password victory: role=%d, correct=%d"), static_cast<int32>(RequestRole), OutCorrectCount);
+
         if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
         {
             GM->HandleCodeVictory(RequestRole);

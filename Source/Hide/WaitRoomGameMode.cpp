@@ -3,6 +3,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "MyPlayerController.h"
 
 AWaitRoomGameMode::AWaitRoomGameMode()
 {
@@ -21,6 +22,18 @@ void AWaitRoomGameMode::PostLogin(APlayerController* NewPlayer)
 void AWaitRoomGameMode::Logout(AController* Exiting)
 {
     Super::Logout(Exiting);
+
+    EnsureHost();
+}
+
+void AWaitRoomGameMode::HandleSeamlessTravelPlayer(AController*& C)
+{
+    Super::HandleSeamlessTravelPlayer(C);
+
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(C))
+    {
+        PC->ClientEnterWaitRoomUI();
+    }
 
     EnsureHost();
 }
@@ -111,7 +124,7 @@ FString AWaitRoomGameMode::BuildGameTravelURL() const
 
     if (!GameMapAsset.IsNull())
     {
-        // "/Game/ThirdPerson/Levels/GameMap"
+        // "/Game/Game/Levels/GameMap"
         return GameMapAsset.ToSoftObjectPath().GetLongPackageName();
     }
 

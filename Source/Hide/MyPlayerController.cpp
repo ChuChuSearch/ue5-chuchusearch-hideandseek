@@ -98,6 +98,14 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
     UpdateGhostUI();
     UpdatePasswordInputState();
 
+    TeamStatusRefreshElapsed += DeltaTime;
+    if (TeamStatusRefreshElapsed >= TeamStatusRefreshInterval)
+    {
+        TeamStatusRefreshElapsed = 0.f;
+        UpdateGameRoomTeamStatus();
+        UpdateGameTimeWidgets();
+    }
+
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
         if (WasInputKeyJustPressed(EKeys::RightMouseButton) && Ghost->IsPlacementMode())
@@ -468,6 +476,37 @@ void AMyPlayerController::ClientCloseWaitRoomUI_Implementation()
     CloseWaitRoomUI();
 }
 
+void AMyPlayerController::ClientEnterWaitRoomUI_Implementation()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    ClosePasswordInputUI();
+    CloseGameRoomUI();
+
+    if (GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance->RemoveFromParent();
+        GhostUIWidgetInstance = nullptr;
+    }
+
+    if (GameResultWidgetInstance)
+    {
+        GameResultWidgetInstance->RemoveFromParent();
+        GameResultWidgetInstance = nullptr;
+    }
+
+    if (WaitRoomWidgetInstance)
+    {
+        WaitRoomWidgetInstance->RemoveFromParent();
+        WaitRoomWidgetInstance = nullptr;
+    }
+
+    ShowWaitRoomUI();
+}
+
 void AMyPlayerController::CloseWaitRoomUI()
 {
     if (!IsLocalController()) return;
@@ -595,6 +634,8 @@ void AMyPlayerController::ShowGameRoomUI()
 
     GameRoomWidgetInstance->AddToViewport();
     RefreshGameRoomCluesFromPlayerState();
+    UpdateGameRoomTeamStatus();
+    UpdateGameTimeWidgets();
 }
 
 void AMyPlayerController::CloseGameRoomUI()
@@ -606,6 +647,86 @@ void AMyPlayerController::CloseGameRoomUI()
         GameRoomWidgetInstance->RemoveFromParent();
         GameRoomWidgetInstance = nullptr;
     }
+}
+
+void AMyPlayerController::UpdateGameRoomTeamStatus()
+{
+    if (!IsLocalController() || (!GameRoomWidgetInstance && !GhostUIWidgetInstance))
+    {
+        return;
+    }
+
+    const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    const AMyPlayerState* PS = GetPlayerState<AMyPlayerState>();
+    if (!GS || !PS)
+    {
+        return;
+    }
+
+    int32 SeekerCount = 0;
+    int32 RunnerCount = 0;
+    GS->GetActiveTeamCounts(SeekerCount, RunnerCount);
+
+    struct FUpdateTeamStatusParams
+    {
+        int32 SeekerCount;
+        int32 RunnerCount;
+        EFinalRole LocalRole;
+    };
+
+    static const FName FuncName(TEXT("UpdateTeamStatus"));
+    const auto UpdateWidget = [&](UUserWidget* Widget)
+    {
+        if (!Widget)
+        {
+            return;
+        }
+
+        if (UFunction* Fn = Widget->FindFunction(FuncName))
+        {
+            FUpdateTeamStatusParams Params;
+            Params.SeekerCount = SeekerCount;
+            Params.RunnerCount = RunnerCount;
+            Params.LocalRole = PS->GetFinalRole();
+
+            Widget->ProcessEvent(Fn, &Params);
+        }
+    };
+
+    UpdateWidget(GameRoomWidgetInstance);
+    UpdateWidget(GhostUIWidgetInstance);
+}
+
+void AMyPlayerController::UpdateGameTimeWidgets()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    static const FName FuncName(TEXT("UpdateGameTimeUI"));
+    const auto UpdateWidget = [&](UUserWidget* Widget)
+    {
+        if (!Widget)
+        {
+            return;
+        }
+
+        if (UFunction* Fn = Widget->FindFunction(FuncName))
+        {
+            if (Fn->ParmsSize == 0)
+            {
+                Widget->ProcessEvent(Fn, nullptr);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("%s.UpdateGameTimeUI must have no input parameters."), *Widget->GetName());
+            }
+        }
+    };
+
+    UpdateWidget(GameRoomWidgetInstance);
+    UpdateWidget(GhostUIWidgetInstance);
 }
 
 void AMyPlayerController::ShowPasswordInputUI()
@@ -832,6 +953,8 @@ void AMyPlayerController::ShowGhostUI()
     bEnableMouseOverEvents = true;
 
     UpdateGhostUI();
+    UpdateGameRoomTeamStatus();
+    UpdateGameTimeWidgets();
 }
 
 void AMyPlayerController::UpdateGhostUI()

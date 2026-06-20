@@ -18,6 +18,7 @@ public:
 
     virtual void PostLogin(APlayerController* NewPlayer) override;
     virtual void Logout(AController* Exiting) override;
+    virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
     UFUNCTION(BlueprintCallable)
     void StartGame(APlayerController* RequestPC);
@@ -28,7 +29,7 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Travel")
     FString GameMapTravelURL =
-        TEXT("/Game/Game/Levels/GameMap?game=/Game/Game/Blueprints/GameMode/BP_MyGameMode.BP_MyGameMode_C");
+        TEXT("/Game/Game/Levels/GameMap?game=/Game/Game/Blueprints/Framework/GameMode/BP_MyGameMode.BP_MyGameMode_C");
 
 private:
     void EnsureHost();

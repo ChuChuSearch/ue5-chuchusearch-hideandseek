@@ -1,7 +1,7 @@
 import unreal
 
 SCENE_ACTOR_NAME = "FbxScene_main_map"
-GENERATED_BP_DIR = "/Game/ThirdPerson/Blueprints/Main/Props/Generated"
+GENERATED_BP_DIR = "/Game/Game/Blueprints/Props"
 PROP_BP_PREFIX = "BP_Prop_"
 PLACED_LABEL_PREFIX = "Placed_BP_Prop_"
 
@@ -17,6 +17,10 @@ asset_lib = unreal.EditorAssetLibrary
 
 def normalize_name(name):
     return str(name).lower().replace(" ", "").replace("_", "").replace("-", "")
+
+
+def get_number_group(asset_name):
+    return f"{(int(asset_name) // 100) * 100:03d}"
 
 
 def is_scene_actor(actor):
@@ -72,7 +76,7 @@ def get_comp_scale(comp):
 
 
 def load_prop_class(mesh_name):
-    bp_path = f"{GENERATED_BP_DIR}/{PROP_BP_PREFIX}{mesh_name}"
+    bp_path = f"{GENERATED_BP_DIR}/{get_number_group(mesh_name)}/{PROP_BP_PREFIX}{mesh_name}"
     if hasattr(asset_lib, "load_blueprint_class"):
         return asset_lib.load_blueprint_class(bp_path)
     return None
@@ -115,7 +119,11 @@ def main():
         prop_class = load_prop_class(mesh_name)
         if not prop_class:
             failed += 1
-            unreal.log_warning(f"Prop BP class not found for mesh {mesh_name}: {GENERATED_BP_DIR}/{PROP_BP_PREFIX}{mesh_name}")
+            group = get_number_group(mesh_name)
+            unreal.log_warning(
+                f"Prop BP class not found for mesh {mesh_name}: "
+                f"{GENERATED_BP_DIR}/{group}/{PROP_BP_PREFIX}{mesh_name}"
+            )
             continue
 
         label = f"{PLACED_LABEL_PREFIX}{mesh_name}_{comp.get_name()}"

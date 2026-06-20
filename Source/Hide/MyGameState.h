@@ -92,6 +92,9 @@ public:
     UFUNCTION(BlueprintCallable)
     int32 CountRunnerTeamCollectedClues() const;
 
+    UFUNCTION(BlueprintCallable, Category = "Team Status")
+    void GetActiveTeamCounts(int32& OutSeekerCount, int32& OutRunnerCount) const;
+
 protected:
     UPROPERTY(Replicated, BlueprintReadOnly)
     TArray<FRespawnPropInfo> RespawnList;

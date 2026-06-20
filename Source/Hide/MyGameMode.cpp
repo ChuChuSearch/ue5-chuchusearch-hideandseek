@@ -221,8 +221,10 @@ void AMyGameMode::ReturnToWaitRoom()
 
     UE_LOG(LogTemp, Log, TEXT("Returning all players to wait room: %s"), *WaitRoomTravelURL);
 
-    bUseSeamlessTravel = true;
-    GetWorld()->ServerTravel(WaitRoomTravelURL, false);
+    // Returning to the lobby should discard match-only controllers, pawns, and UI.
+    // A seamless travel can preserve the result widget and leave clients on its black frame.
+    bUseSeamlessTravel = false;
+    GetWorld()->ServerTravel(WaitRoomTravelURL, true);
 }
 
 void AMyGameMode::NotifyRunnerReachedSpecialExit(AMyCharacter* Runner)

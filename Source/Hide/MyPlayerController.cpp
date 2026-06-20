@@ -52,6 +52,10 @@ void AMyPlayerController::BeginPlay()
         CloseWaitRoomUI();
         ShowGameRoomUI();
     }
+    else if (LevelName == TEXT("ConnectMap"))
+    {
+        CloseGameRoomUI();
+    }
     else
     {
         CloseWaitRoomUI();

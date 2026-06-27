@@ -110,23 +110,19 @@ FVector AMyCharacter::PropWorldLocationForCharacter(APropBase* Prop) const
     return GetActorLocation() + FVector(0.f, 0.f, PropBottomOffset - CapsuleHalf);
 }
 
-FVector AMyCharacter::PropReleaseWorldLocation(APropBase* Prop) const
+bool AMyCharacter::FindCharacterReleaseLocation(APropBase* Prop, FVector& OutLocation) const
 {
-    if (!Prop) return GetActorLocation();
-
-    const float CapsuleHalf = GetCapsuleHalfHeight();
-    const float PropBottomOffset = Prop->GetBottomOffsetFromActorLocation();
-    const FVector Forward = GetActorForwardVector();
-    const FVector Right = GetActorRightVector();
-    const FVector Base = GetActorLocation() + FVector(0.f, 0.f, PropBottomOffset - CapsuleHalf + 8.f);
+    if (!Prop || !GetWorld()) return false;
 
     const UStaticMeshComponent* PropMesh = Prop->GetStaticMesh();
     const UCapsuleComponent* Capsule = GetCapsuleComponent();
-    const FVector PropExtent = PropMesh ? PropMesh->Bounds.BoxExtent : FVector(50.f);
-    const float CapsuleRadius = Capsule ? Capsule->GetScaledCapsuleRadius() : 35.f;
-    const float ReleaseDistance = FMath::Max(PropExtent.X, PropExtent.Y)
-        + CapsuleRadius
-        + ReleaseClearanceMargin;
+    if (!PropMesh || !Capsule) return false;
+
+    const FVector Forward = GetActorForwardVector();
+    const FVector Right = GetActorRightVector();
+    const FVector BoundsCenter = PropMesh->Bounds.Origin;
+    const FVector PropExtent = PropMesh->Bounds.BoxExtent;
+    const float CapsuleRadius = Capsule->GetScaledCapsuleRadius();
 
     const TArray<FVector> Directions = {
         Forward,
@@ -139,32 +135,65 @@ FVector AMyCharacter::PropReleaseWorldLocation(APropBase* Prop) const
         (-Forward - Right).GetSafeNormal()
     };
 
-    for (const float DistanceScale : { 1.f, 1.5f, 2.f })
+    for (const float ExtraDistance : { 0.f, 30.f, 60.f, 100.f })
     {
+        FVector BestCandidate = FVector::ZeroVector;
+        float BestDistanceSquared = MAX_flt;
+        bool bFoundCandidate = false;
+
         for (const FVector& Direction : Directions)
         {
-            const FVector Candidate = Base + Direction * ReleaseDistance * DistanceScale;
-            const FVector GroundedCandidate = ProjectReleaseLocationToGround(Prop, Candidate);
-            if (IsReleaseLocationClear(Prop, GroundedCandidate))
+            const float PropRadiusInDirection = FMath::Abs(Direction.X) * PropExtent.X
+                + FMath::Abs(Direction.Y) * PropExtent.Y;
+            const float ReleaseDistance = PropRadiusInDirection
+                + CapsuleRadius
+                + ReleaseClearanceMargin
+                + ExtraDistance;
+
+            const FVector Candidate(
+                BoundsCenter.X + Direction.X * ReleaseDistance,
+                BoundsCenter.Y + Direction.Y * ReleaseDistance,
+                GetActorLocation().Z);
+            const FVector GroundedCandidate = ProjectCharacterReleaseLocationToGround(Prop, Candidate);
+            if (IsCharacterReleaseLocationClear(Prop, GroundedCandidate))
             {
-                return GroundedCandidate;
+                const FVector CandidateDelta = GroundedCandidate - GetActorLocation();
+                const float DistanceSquared = FMath::Square(CandidateDelta.X)
+                    + FMath::Square(CandidateDelta.Y);
+                if (!bFoundCandidate || DistanceSquared < BestDistanceSquared)
+                {
+                    BestCandidate = GroundedCandidate;
+                    BestDistanceSquared = DistanceSquared;
+                    bFoundCandidate = true;
+                }
             }
+        }
+
+        if (bFoundCandidate)
+        {
+            OutLocation = BestCandidate;
+            return true;
         }
     }
 
-    return ProjectReleaseLocationToGround(Prop, Base + Forward * ReleaseDistance * 2.5f);
+    return false;
 }
 
-FVector AMyCharacter::ProjectReleaseLocationToGround(APropBase* Prop, const FVector& Location) const
+FVector AMyCharacter::ProjectCharacterReleaseLocationToGround(APropBase* Prop, const FVector& Location) const
 {
     if (!Prop || !GetWorld())
     {
         return Location;
     }
 
-    const float PropBottomOffset = Prop->GetBottomOffsetFromActorLocation();
-    const FVector TraceStart = Location + FVector(0.f, 0.f, 20.f);
-    const FVector TraceEnd = Location - FVector(0.f, 0.f, 3000.f);
+    const UStaticMeshComponent* PropMesh = Prop->GetStaticMesh();
+    const float CapsuleHalf = GetCapsuleHalfHeight();
+    const float PropTop = PropMesh
+        ? PropMesh->Bounds.Origin.Z + PropMesh->Bounds.BoxExtent.Z
+        : GetActorLocation().Z;
+    const float TraceStartZ = FMath::Max(GetActorLocation().Z + CapsuleHalf + 100.f, PropTop + 100.f);
+    const FVector TraceStart(Location.X, Location.Y, TraceStartZ);
+    const FVector TraceEnd(Location.X, Location.Y, TraceStartZ - 3000.f);
 
     FHitResult Hit;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(PropReleaseGroundTrace), false);
@@ -184,10 +213,10 @@ FVector AMyCharacter::ProjectReleaseLocationToGround(APropBase* Prop, const FVec
         return Location;
     }
 
-    return FVector(Location.X, Location.Y, Hit.ImpactPoint.Z + PropBottomOffset + 2.f);
+    return FVector(Location.X, Location.Y, Hit.ImpactPoint.Z + CapsuleHalf + 2.f);
 }
 
-bool AMyCharacter::IsReleaseLocationClear(APropBase* Prop, const FVector& Location) const
+bool AMyCharacter::IsCharacterReleaseLocationClear(APropBase* Prop, const FVector& Location) const
 {
     if (!Prop || !GetWorld())
     {
@@ -200,45 +229,41 @@ bool AMyCharacter::IsReleaseLocationClear(APropBase* Prop, const FVector& Locati
         return false;
     }
 
-    FVector Extent = PropMesh->Bounds.BoxExtent * 0.95f;
-    Extent.X = FMath::Max(Extent.X, 5.f);
-    Extent.Y = FMath::Max(Extent.Y, 5.f);
-    Extent.Z = FMath::Max(Extent.Z, 5.f);
-
     const UCapsuleComponent* Capsule = GetCapsuleComponent();
-    const float CapsuleRadius = Capsule ? Capsule->GetScaledCapsuleRadius() : 35.f;
-    const float MinCharacterDistance = FMath::Max(Extent.X, Extent.Y)
-        + CapsuleRadius
-        + ReleaseClearanceMargin * 0.5f;
-    const FVector CharacterDelta = Location - GetActorLocation();
-    const float CharacterDistanceSquared2D = FMath::Square(CharacterDelta.X) + FMath::Square(CharacterDelta.Y);
-    if (CharacterDistanceSquared2D < FMath::Square(MinCharacterDistance))
+    if (!Capsule)
     {
         return false;
     }
 
-    FCollisionShape Shape = FCollisionShape::MakeBox(Extent);
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(PropReleaseOverlap), false);
+    const FVector PropExtent = PropMesh->Bounds.BoxExtent;
+    const FVector CharacterDelta = Location - PropMesh->Bounds.Origin;
+    const float SeparationX = FMath::Max(FMath::Abs(CharacterDelta.X) - PropExtent.X, 0.f);
+    const float SeparationY = FMath::Max(FMath::Abs(CharacterDelta.Y) - PropExtent.Y, 0.f);
+    const float RequiredClearance = Capsule->GetScaledCapsuleRadius() + ReleaseClearanceMargin * 0.5f;
+    if (FMath::Square(SeparationX) + FMath::Square(SeparationY) < FMath::Square(RequiredClearance))
+    {
+        return false;
+    }
+
+    const FCollisionShape Shape = FCollisionShape::MakeCapsule(
+        Capsule->GetScaledCapsuleRadius() * 0.95f,
+        Capsule->GetScaledCapsuleHalfHeight() * 0.95f);
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(CharacterReleaseOverlap), false);
     Params.AddIgnoredActor(this);
     Params.AddIgnoredActor(Prop);
 
-    const bool bOverlapStatic = GetWorld()->OverlapBlockingTestByChannel(
+    FCollisionObjectQueryParams ObjectParams;
+    ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+    ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+    ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+
+    return !GetWorld()->OverlapAnyTestByObjectType(
         Location,
         FQuat::Identity,
-        ECC_WorldStatic,
+        ObjectParams,
         Shape,
         Params
     );
-
-    const bool bOverlapDynamic = GetWorld()->OverlapBlockingTestByChannel(
-        Location,
-        FQuat::Identity,
-        ECC_WorldDynamic,
-        Shape,
-        Params
-    );
-
-    return !bOverlapStatic && !bOverlapDynamic;
 }
 
 void AMyCharacter::ServerReleaseProp_Implementation()
@@ -252,6 +277,18 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
     if (!PossessedProp) return;
 
     APropBase* Old = PossessedProp;
+    FVector CharacterReleaseLocation;
+    if (!FindCharacterReleaseLocation(Old, CharacterReleaseLocation))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Release cancelled: no clear character location around %s"), *GetNameSafe(Old));
+        return;
+    }
+
+    const FVector PropLocation = Old->GetActorLocation();
+    const FRotator PropRotation = Old->GetActorRotation();
+    Old->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    SetActorLocation(CharacterReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
+
     PossessedProp = nullptr;
     bLocked = false;
     bForcedPossessLock = false;
@@ -263,10 +300,8 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
 
     if (Old)
     {
-        const FVector ReleaseLocation = PropReleaseWorldLocation(Old);
-        const FRotator ReleaseRotation = Old->GetActorRotation();
-        Old->FinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
-        Old->MulticastFinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
+        Old->FinalizeReleaseTransform(PropLocation, PropRotation);
+        Old->MulticastFinalizeReleaseTransform(PropLocation, PropRotation);
         Old->SetPossessedNet(false);
         Old->ReleaseClaim(this);
         Old->ForceNetUpdate();
@@ -414,6 +449,10 @@ void AMyCharacter::ServerTryPossess_Implementation(APropBase* Prop)
     if (PossessedProp)
     {
         ServerReleaseProp();
+        if (PossessedProp)
+        {
+            return;
+        }
     }
 
     // Claim(예약)부터
@@ -477,15 +516,19 @@ bool AMyCharacter::ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPr
     if (!NewPropClass) return false;
     if (!GetWorld()) return false;
 
-    const FVector SpawnLoc = PossessedProp->GetActorLocation();
     const FRotator SpawnRot = PossessedProp->GetActorRotation();
 
     ReleasePossessedPropInternal(true);
+    if (PossessedProp)
+    {
+        return false;
+    }
 
     FActorSpawnParameters Params;
     Params.Owner = GetController();
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
+    const FVector SpawnLoc = GetActorLocation();
     APropBase* NewProp = GetWorld()->SpawnActor<APropBase>(NewPropClass, SpawnLoc, SpawnRot, Params);
     if (!NewProp)
     {
@@ -799,19 +842,28 @@ void AMyCharacter::DetachAndSyncRelease(APropBase* Prop)
 {
     if (!Prop) return;
 
-    const FVector ReleaseLocation = PropReleaseWorldLocation(Prop);
-    const FRotator ReleaseRotation = Prop->GetActorRotation();
-    Prop->FinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
+    const FVector PropLocation = Prop->GetActorLocation();
+    const FRotator PropRotation = Prop->GetActorRotation();
 
     if (HasAuthority())
     {
+        FVector CharacterReleaseLocation;
+        if (!FindCharacterReleaseLocation(Prop, CharacterReleaseLocation))
+        {
+            return;
+        }
+
+        Prop->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        SetActorLocation(CharacterReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
+        Prop->FinalizeReleaseTransform(PropLocation, PropRotation);
         Prop->ReleaseClaim(this);
-        Prop->MulticastFinalizeReleaseTransform(ReleaseLocation, ReleaseRotation);
+        Prop->MulticastFinalizeReleaseTransform(PropLocation, PropRotation);
         Prop->SetPossessedNet(false);
         Prop->ForceNetUpdate();
     }
     else
     {
+        Prop->FinalizeReleaseTransform(PropLocation, PropRotation);
         Prop->SetPossessedState(false);
     }
 

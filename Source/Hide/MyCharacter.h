@@ -46,7 +46,7 @@ public:
     float JumpStrengthMultiplier = 1.3f;
 
     UPROPERTY(EditDefaultsOnly, Category = "Possess", meta = (ClampMin = "0.0"))
-    float ReleaseClearanceMargin = 30.f;
+    float ReleaseClearanceMargin = 12.f;
 
     bool IsSeeker() const { return bIsSeeker; }
 
@@ -111,9 +111,9 @@ private:
 
     float GetCapsuleHalfHeight() const;
     FVector PropWorldLocationForCharacter(APropBase* Prop) const;
-    FVector PropReleaseWorldLocation(APropBase* Prop) const;
-    FVector ProjectReleaseLocationToGround(APropBase* Prop, const FVector& Location) const;
-    bool IsReleaseLocationClear(APropBase* Prop, const FVector& Location) const;
+    bool FindCharacterReleaseLocation(APropBase* Prop, FVector& OutLocation) const;
+    FVector ProjectCharacterReleaseLocationToGround(APropBase* Prop, const FVector& Location) const;
+    bool IsCharacterReleaseLocationClear(APropBase* Prop, const FVector& Location) const;
 
     UPROPERTY(ReplicatedUsing = OnRep_PossessedProp)
     APropBase* PossessedProp = nullptr;

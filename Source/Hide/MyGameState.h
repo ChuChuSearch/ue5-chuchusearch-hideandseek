@@ -34,6 +34,18 @@ public:
     FTransform Transform;
 };
 
+USTRUCT()
+struct FReplicatedGameResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    EFinalRole WinningRole = EFinalRole::None;
+
+    UPROPERTY()
+    int32 Serial = 0;
+};
+
 UCLASS()
 class HIDE_API AMyGameState : public AGameStateBase
 {
@@ -95,6 +107,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Team Status")
     void GetActiveTeamCounts(int32& OutSeekerCount, int32& OutRunnerCount) const;
 
+    void BuildPositionedClueNumbers(const TArray<int32>& CollectedClueNumbers, TArray<int32>& OutPositionedClues) const;
+    void SetGameResult_Server(EFinalRole WinningRole);
+
 protected:
     UPROPERTY(Replicated, BlueprintReadOnly)
     TArray<FRespawnPropInfo> RespawnList;
@@ -150,10 +165,15 @@ protected:
     UPROPERTY(Replicated, BlueprintReadOnly, Category = "Game Phase")
     double PhaseEndServerTime = 0.0;
 
+    UPROPERTY(ReplicatedUsing = OnRep_GameResult)
+    FReplicatedGameResult GameResult;
+
     UPROPERTY(EditDefaultsOnly, Category = "Respawn")
     int32 MaxVisibleRespawnProps = 3;
 
     void SelectRandomClueProps();
+    UFUNCTION()
+    void OnRep_GameResult();
     double GetRunnerClueBasedCooldown() const;
     double GetServerTimeSeconds() const;
     bool RefreshVisibleRespawnList();

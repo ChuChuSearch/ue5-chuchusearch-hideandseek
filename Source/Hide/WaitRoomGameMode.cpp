@@ -16,6 +16,7 @@ void AWaitRoomGameMode::PostLogin(APlayerController* NewPlayer)
 {
     Super::PostLogin(NewPlayer);
 
+    RegisterLobbyJoinOrder(NewPlayer ? NewPlayer->GetPlayerState<AMyPlayerState>() : nullptr);
     EnsureHost();
 }
 
@@ -32,10 +33,27 @@ void AWaitRoomGameMode::HandleSeamlessTravelPlayer(AController*& C)
 
     if (AMyPlayerController* PC = Cast<AMyPlayerController>(C))
     {
+        RegisterLobbyJoinOrder(PC->GetPlayerState<AMyPlayerState>());
         PC->ClientEnterWaitRoomUI();
     }
 
     EnsureHost();
+}
+
+void AWaitRoomGameMode::RegisterLobbyJoinOrder(AMyPlayerState* PlayerState)
+{
+    if (!HasAuthority() || !PlayerState)
+    {
+        return;
+    }
+
+    if (PlayerState->GetLobbyJoinOrder() <= 0)
+    {
+        PlayerState->SetLobbyJoinOrder_Server(NextLobbyJoinOrder++);
+        return;
+    }
+
+    NextLobbyJoinOrder = FMath::Max(NextLobbyJoinOrder, PlayerState->GetLobbyJoinOrder() + 1);
 }
 
 void AWaitRoomGameMode::EnsureHost()
@@ -59,6 +77,13 @@ void AWaitRoomGameMode::EnsureHost()
     }
 
     if (AllPS.Num() == 0) return;
+
+    AllPS.Sort([](const AMyPlayerState& A, const AMyPlayerState& B)
+    {
+        const int32 AOrder = A.GetLobbyJoinOrder() > 0 ? A.GetLobbyJoinOrder() : MAX_int32;
+        const int32 BOrder = B.GetLobbyJoinOrder() > 0 ? B.GetLobbyJoinOrder() : MAX_int32;
+        return AOrder < BOrder;
+    });
 
     if (!CurrentHost)
     {
@@ -139,7 +164,12 @@ void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)
     if (!RequestPS || !RequestPS->IsHost()) return;
 
     const int32 PlayerCount = GameState->PlayerArray.Num();
-    if (PlayerCount < 2 || PlayerCount > 4) return;
+    if (PlayerCount < 2)
+    {
+        return;
+    }
+
+    if (PlayerCount > 4) return;
 
     AMyPlayerState* SeekerPS = nullptr;
     if (!PickSeeker(SeekerPS) || !SeekerPS) return;

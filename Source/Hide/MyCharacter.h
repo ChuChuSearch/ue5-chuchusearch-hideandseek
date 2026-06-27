@@ -16,6 +16,7 @@ class HIDE_API AMyCharacter : public ACharacter
 public:
     AMyCharacter();
 
+    virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -40,6 +41,12 @@ public:
 
     UPROPERTY(EditDefaultsOnly, Category = "Rotate")
     float LockedRotateDegPerSec = 200.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Movement", meta = (ClampMin = "0.1"))
+    float JumpStrengthMultiplier = 1.3f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Possess", meta = (ClampMin = "0.0"))
+    float ReleaseClearanceMargin = 30.f;
 
     bool IsSeeker() const { return bIsSeeker; }
 

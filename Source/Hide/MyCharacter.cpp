@@ -120,25 +120,39 @@ FVector AMyCharacter::PropReleaseWorldLocation(APropBase* Prop) const
     const FVector Right = GetActorRightVector();
     const FVector Base = GetActorLocation() + FVector(0.f, 0.f, PropBottomOffset - CapsuleHalf + 8.f);
 
-    TArray<FVector> Candidates;
-    Candidates.Reserve(6);
-    Candidates.Add(Base + Forward * 90.f);
-    Candidates.Add(Base + Forward * 60.f + Right * 70.f);
-    Candidates.Add(Base + Forward * 60.f - Right * 70.f);
-    Candidates.Add(Base - Forward * 50.f);
-    Candidates.Add(Base + Right * 90.f);
-    Candidates.Add(Base - Right * 90.f);
+    const UStaticMeshComponent* PropMesh = Prop->GetStaticMesh();
+    const UCapsuleComponent* Capsule = GetCapsuleComponent();
+    const FVector PropExtent = PropMesh ? PropMesh->Bounds.BoxExtent : FVector(50.f);
+    const float CapsuleRadius = Capsule ? Capsule->GetScaledCapsuleRadius() : 35.f;
+    const float ReleaseDistance = FMath::Max(PropExtent.X, PropExtent.Y)
+        + CapsuleRadius
+        + ReleaseClearanceMargin;
 
-    for (const FVector& Candidate : Candidates)
+    const TArray<FVector> Directions = {
+        Forward,
+        (Forward + Right).GetSafeNormal(),
+        (Forward - Right).GetSafeNormal(),
+        Right,
+        -Right,
+        -Forward,
+        (-Forward + Right).GetSafeNormal(),
+        (-Forward - Right).GetSafeNormal()
+    };
+
+    for (const float DistanceScale : { 1.f, 1.5f, 2.f })
     {
-        const FVector GroundedCandidate = ProjectReleaseLocationToGround(Prop, Candidate);
-        if (IsReleaseLocationClear(Prop, GroundedCandidate))
+        for (const FVector& Direction : Directions)
         {
-            return GroundedCandidate;
+            const FVector Candidate = Base + Direction * ReleaseDistance * DistanceScale;
+            const FVector GroundedCandidate = ProjectReleaseLocationToGround(Prop, Candidate);
+            if (IsReleaseLocationClear(Prop, GroundedCandidate))
+            {
+                return GroundedCandidate;
+            }
         }
     }
 
-    return ProjectReleaseLocationToGround(Prop, Base + Forward * 90.f);
+    return ProjectReleaseLocationToGround(Prop, Base + Forward * ReleaseDistance * 2.5f);
 }
 
 FVector AMyCharacter::ProjectReleaseLocationToGround(APropBase* Prop, const FVector& Location) const
@@ -190,6 +204,18 @@ bool AMyCharacter::IsReleaseLocationClear(APropBase* Prop, const FVector& Locati
     Extent.X = FMath::Max(Extent.X, 5.f);
     Extent.Y = FMath::Max(Extent.Y, 5.f);
     Extent.Z = FMath::Max(Extent.Z, 5.f);
+
+    const UCapsuleComponent* Capsule = GetCapsuleComponent();
+    const float CapsuleRadius = Capsule ? Capsule->GetScaledCapsuleRadius() : 35.f;
+    const float MinCharacterDistance = FMath::Max(Extent.X, Extent.Y)
+        + CapsuleRadius
+        + ReleaseClearanceMargin * 0.5f;
+    const FVector CharacterDelta = Location - GetActorLocation();
+    const float CharacterDistanceSquared2D = FMath::Square(CharacterDelta.X) + FMath::Square(CharacterDelta.Y);
+    if (CharacterDistanceSquared2D < FMath::Square(MinCharacterDistance))
+    {
+        return false;
+    }
 
     FCollisionShape Shape = FCollisionShape::MakeBox(Extent);
     FCollisionQueryParams Params(SCENE_QUERY_STAT(PropReleaseOverlap), false);
@@ -259,6 +285,16 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
                 MPC->ClientSetForcedSwapWarning(false, 0.0);
             }
         }
+    }
+}
+
+void AMyCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+
+    if (UCharacterMovementComponent* Move = GetCharacterMovement())
+    {
+        Move->JumpZVelocity *= FMath::Max(0.1f, JumpStrengthMultiplier);
     }
 }
 

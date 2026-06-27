@@ -32,8 +32,11 @@ protected:
         TEXT("/Game/Game/Levels/GameMap?game=/Game/Game/Blueprints/Framework/GameMode/BP_MyGameMode.BP_MyGameMode_C");
 
 private:
+    void RegisterLobbyJoinOrder(AMyPlayerState* PlayerState);
     void EnsureHost();
     bool PickSeeker(AMyPlayerState*& OutSeekerPS) const;
 
     FString BuildGameTravelURL() const;
+
+    int32 NextLobbyJoinOrder = 1;
 };

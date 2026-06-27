@@ -40,6 +40,9 @@ public:
     UFUNCTION(BlueprintCallable)
     bool IsHost() const { return bIsHost; }
 
+    UFUNCTION(BlueprintCallable)
+    int32 GetLobbyJoinOrder() const { return LobbyJoinOrder; }
+
     UFUNCTION(BlueprintCallable, Server, Reliable)
     void ServerSetNickname(const FString& InNickname);
 
@@ -47,6 +50,7 @@ public:
     void ServerSetPreference(ERolePreference InPreference);
 
     void SetHost_Server(bool bNewHost);
+    void SetLobbyJoinOrder_Server(int32 NewJoinOrder);
     void SetFinalRole_Server(EFinalRole InRole);
 
     virtual void CopyProperties(APlayerState* PlayerState) override;
@@ -76,6 +80,9 @@ protected:
 
     UPROPERTY(Replicated)
     bool bIsHost = false;
+
+    UPROPERTY(Replicated)
+    int32 LobbyJoinOrder = 0;
 
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

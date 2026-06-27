@@ -4,6 +4,7 @@
 #include "CluePickup.h"
 #include "MyGameMode.h"
 #include "MyCharacter.h"
+#include "MyPlayerController.h"
 #include "MyPlayerState.h"
 #include "PropBase.h"
 #include "Components/StaticMeshComponent.h"
@@ -183,6 +184,48 @@ void AMyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     DOREPLIFETIME(AMyGameState, SeekerCodeCooldownEndServerTime);
     DOREPLIFETIME(AMyGameState, CurrentGamePhase);
     DOREPLIFETIME(AMyGameState, PhaseEndServerTime);
+    DOREPLIFETIME(AMyGameState, GameResult);
+}
+
+void AMyGameState::BuildPositionedClueNumbers(
+    const TArray<int32>& CollectedClueNumbers,
+    TArray<int32>& OutPositionedClues) const
+{
+    OutPositionedClues.Init(INDEX_NONE, PasswordCodeLength);
+
+    const int32 CodeLength = FMath::Min(PasswordCodeLength, ClueNumbers.Num());
+    for (int32 Index = 0; Index < CodeLength; ++Index)
+    {
+        if (CollectedClueNumbers.Contains(ClueNumbers[Index]))
+        {
+            OutPositionedClues[Index] = ClueNumbers[Index];
+        }
+    }
+}
+
+void AMyGameState::SetGameResult_Server(EFinalRole WinningRole)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    GameResult.WinningRole = WinningRole;
+    ++GameResult.Serial;
+    ForceNetUpdate();
+}
+
+void AMyGameState::OnRep_GameResult()
+{
+    if (GameResult.Serial <= 0 || GameResult.WinningRole == EFinalRole::None || !GetWorld())
+    {
+        return;
+    }
+
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetWorld()->GetFirstPlayerController()))
+    {
+        PC->ShowGameResultLocal(GameResult.WinningRole);
+    }
 }
 
 bool AMyGameState::AppendVisibleRespawnEntry(int32 SourceIndex)
@@ -435,6 +478,22 @@ bool AMyGameState::SubmitPasswordCode(APlayerController* RequestPC, const TArray
 
     OutCooldownRemaining = GetCodeInputCooldownRemaining(RequestRole);
     if (OutCooldownRemaining > 0.0)
+    {
+        return false;
+    }
+
+    TSet<int32> UniqueInputDigits;
+    for (const int32 Digit : InputCode)
+    {
+        if (Digit < 0 || Digit > 9 || UniqueInputDigits.Contains(Digit))
+        {
+            return false;
+        }
+
+        UniqueInputDigits.Add(Digit);
+    }
+
+    if (InputCode.Num() != PasswordCodeLength)
     {
         return false;
     }

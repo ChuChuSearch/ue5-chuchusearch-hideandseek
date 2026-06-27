@@ -29,6 +29,15 @@ void AMyPlayerState::SetHost_Server(bool bNewHost)
     if (!HasAuthority()) return;
 
     bIsHost = bNewHost;
+    ForceNetUpdate();
+}
+
+void AMyPlayerState::SetLobbyJoinOrder_Server(int32 NewJoinOrder)
+{
+    if (!HasAuthority()) return;
+
+    LobbyJoinOrder = FMath::Max(0, NewJoinOrder);
+    ForceNetUpdate();
 }
 
 void AMyPlayerState::SetFinalRole_Server(EFinalRole InRole)
@@ -49,6 +58,7 @@ void AMyPlayerState::CopyProperties(APlayerState* PlayerState)
     MyPS->Preference = Preference;
     MyPS->FinalRole = FinalRole;
     MyPS->bIsHost = bIsHost;
+    MyPS->LobbyJoinOrder = LobbyJoinOrder;
 }
 
 void AMyPlayerState::OverrideWith(APlayerState* PlayerState)
@@ -62,6 +72,7 @@ void AMyPlayerState::OverrideWith(APlayerState* PlayerState)
     Preference = MyPS->Preference;
     FinalRole = MyPS->FinalRole;
     bIsHost = MyPS->bIsHost;
+    LobbyJoinOrder = MyPS->LobbyJoinOrder;
 }
 
 void AMyPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -72,6 +83,7 @@ void AMyPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(AMyPlayerState, Preference);
     DOREPLIFETIME(AMyPlayerState, FinalRole);
     DOREPLIFETIME(AMyPlayerState, bIsHost);
+    DOREPLIFETIME(AMyPlayerState, LobbyJoinOrder);
     DOREPLIFETIME(AMyPlayerState, CollectedClueNumbers);
 }
 

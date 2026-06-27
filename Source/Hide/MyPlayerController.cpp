@@ -851,6 +851,12 @@ void AMyPlayerController::UpdateGameRoomClues(const TArray<int32>& InCollectedCl
 {
     if (!GameRoomWidgetInstance) return;
 
+    TArray<int32> PositionedClues = InCollectedClueNumbers;
+    if (const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
+    {
+        GS->BuildPositionedClueNumbers(InCollectedClueNumbers, PositionedClues);
+    }
+
     static const FName FuncName(TEXT("UpdateClues"));
 
     if (UFunction* Fn = GameRoomWidgetInstance->FindFunction(FuncName))
@@ -861,7 +867,7 @@ void AMyPlayerController::UpdateGameRoomClues(const TArray<int32>& InCollectedCl
         };
 
         FUpdateCluesParams Params;
-        Params.CollectedClueNumbers = InCollectedClueNumbers;
+        Params.CollectedClueNumbers = PositionedClues;
 
         GameRoomWidgetInstance->ProcessEvent(Fn, &Params);
     }
@@ -1066,10 +1072,23 @@ void AMyPlayerController::ClientSetForcedSwapWarning_Implementation(bool bShowWa
 
 void AMyPlayerController::ClientShowGameResult_Implementation(EFinalRole WinningRole)
 {
+    ShowGameResultLocal(WinningRole);
+}
+
+void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
+{
     if (!IsLocalController())
     {
         return;
     }
+
+    AMyGameState* ResultSource = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (GameResultWidgetInstance && LastGameResultSource.Get() == ResultSource)
+    {
+        return;
+    }
+
+    LastGameResultSource = ResultSource;
 
     const AMyPlayerState* MPS = GetPlayerState<AMyPlayerState>();
     const bool bWon = MPS && MPS->GetFinalRole() == WinningRole;

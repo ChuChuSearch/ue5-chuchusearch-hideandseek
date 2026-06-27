@@ -13,6 +13,7 @@ class AMyCharacter;
 class APropBase;
 class AGhostCharacter;
 class AMyPlayerState;
+class AMyGameState;
 class APasswordDoor;
 
 UCLASS()
@@ -67,6 +68,8 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
+
+    void ShowGameResultLocal(EFinalRole WinningRole);
 
     UFUNCTION(Client, Reliable)
     void ClientEnterWaitRoomUI();
@@ -184,6 +187,8 @@ private:
 
     UPROPERTY()
     UUserWidget* GameResultWidgetInstance = nullptr;
+
+    TWeakObjectPtr<AMyGameState> LastGameResultSource;
 };
 
 

@@ -180,6 +180,7 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
     if (AMyGameState* GS = GetGameState<AMyGameState>())
     {
         GS->SetGamePhase_Server(EGamePhase::Ended, 0.0);
+        GS->SetGameResult_Server(WinningRole);
     }
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)

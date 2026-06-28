@@ -46,6 +46,80 @@ void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewP
     SpawnPlayerAsRole(NewPlayer, bSeeker);
 }
 
+void AMyGameMode::Logout(AController* Exiting)
+{
+    const AMyPlayerState* ExitingPlayerState = Exiting
+        ? Exiting->GetPlayerState<AMyPlayerState>()
+        : nullptr;
+
+    Super::Logout(Exiting);
+
+    EvaluateTeamsAfterLogout(ExitingPlayerState);
+}
+
+void AMyGameMode::EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState)
+{
+    if (!HasAuthority() || !GameState)
+    {
+        return;
+    }
+
+    int32 RemainingPlayers = 0;
+    int32 RemainingSeekers = 0;
+    int32 RemainingRunners = 0;
+
+    for (APlayerState* PlayerState : GameState->PlayerArray)
+    {
+        const AMyPlayerState* MyPlayerState = Cast<AMyPlayerState>(PlayerState);
+        if (!MyPlayerState || MyPlayerState == ExitingPlayerState)
+        {
+            continue;
+        }
+
+        ++RemainingPlayers;
+
+        if (MyPlayerState->GetFinalRole() == EFinalRole::Seeker)
+        {
+            ++RemainingSeekers;
+        }
+        else if (MyPlayerState->GetFinalRole() == EFinalRole::Runner)
+        {
+            ++RemainingRunners;
+        }
+    }
+
+    if (RemainingPlayers == 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Match abandoned: all players disconnected. Returning server to wait room."));
+
+        bGameEnded = true;
+        GetWorldTimerManager().ClearTimer(TH_GamePhase);
+        GetWorldTimerManager().ClearTimer(TH_ReturnToWaitRoom);
+
+        if (AMyGameState* GS = GetGameState<AMyGameState>())
+        {
+            GS->SetGamePhase_Server(EGamePhase::Ended, 0.0);
+        }
+
+        ReturnToWaitRoom();
+        return;
+    }
+
+    if (bGameEnded)
+    {
+        return;
+    }
+
+    if (RemainingSeekers == 0 && RemainingRunners > 0)
+    {
+        EndGameWithWinner(EFinalRole::Runner);
+    }
+    else if (RemainingRunners == 0 && RemainingSeekers > 0)
+    {
+        EndGameWithWinner(EFinalRole::Seeker);
+    }
+}
+
 void AMyGameMode::SpawnPlayerAsRole(APlayerController* PC, bool bSeeker)
 {
     if (!HasAuthority() || !IsValid(PC)) return;
@@ -215,10 +289,13 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
 
 void AMyGameMode::ReturnToWaitRoom()
 {
-    if (!HasAuthority() || !GetWorld() || WaitRoomTravelURL.IsEmpty())
+    if (!HasAuthority() || !GetWorld() || WaitRoomTravelURL.IsEmpty() || bReturningToWaitRoom)
     {
         return;
     }
+
+    bReturningToWaitRoom = true;
+    GetWorldTimerManager().ClearTimer(TH_ReturnToWaitRoom);
 
     UE_LOG(LogTemp, Log, TEXT("Returning all players to wait room: %s"), *WaitRoomTravelURL);
 

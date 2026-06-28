@@ -33,7 +33,7 @@ protected:
 
 private:
     void RegisterLobbyJoinOrder(AMyPlayerState* PlayerState);
-    void EnsureHost();
+    void EnsureHost(const AMyPlayerState* ExcludedPlayerState = nullptr);
     bool PickSeeker(AMyPlayerState*& OutSeekerPS) const;
 
     FString BuildGameTravelURL() const;

@@ -22,6 +22,7 @@ public:
 
     virtual void BeginPlay() override;
     virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+    virtual void Logout(AController* Exiting) override;
 
     void SpawnPlayerAsRole(APlayerController* PC, bool bSeeker);
     void HandleRunnerEliminated(AMyCharacter* EliminatedRunner);
@@ -100,9 +101,11 @@ protected:
     void ResolveForcedSwapProps();
     void ClearPhase1PropBans();
     bool HasAnyActiveRunner() const;
+    void EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState);
 
     FTimerHandle TH_GamePhase;
     FTimerHandle TH_ReturnToWaitRoom;
+    bool bReturningToWaitRoom = false;
     TSet<TWeakObjectPtr<APropBase>> Phase1PossessedProps;
     TSet<TWeakObjectPtr<APropBase>> BannedPhase1Props;
 };

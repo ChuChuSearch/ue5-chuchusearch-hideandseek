@@ -22,9 +22,13 @@ void AWaitRoomGameMode::PostLogin(APlayerController* NewPlayer)
 
 void AWaitRoomGameMode::Logout(AController* Exiting)
 {
+    const AMyPlayerState* ExitingPlayerState = Exiting
+        ? Exiting->GetPlayerState<AMyPlayerState>()
+        : nullptr;
+
     Super::Logout(Exiting);
 
-    EnsureHost();
+    EnsureHost(ExitingPlayerState);
 }
 
 void AWaitRoomGameMode::HandleSeamlessTravelPlayer(AController*& C)
@@ -56,7 +60,7 @@ void AWaitRoomGameMode::RegisterLobbyJoinOrder(AMyPlayerState* PlayerState)
     NextLobbyJoinOrder = FMath::Max(NextLobbyJoinOrder, PlayerState->GetLobbyJoinOrder() + 1);
 }
 
-void AWaitRoomGameMode::EnsureHost()
+void AWaitRoomGameMode::EnsureHost(const AMyPlayerState* ExcludedPlayerState)
 {
     if (!HasAuthority() || !GameState) return;
 
@@ -67,7 +71,7 @@ void AWaitRoomGameMode::EnsureHost()
     for (APlayerState* PS : GameState->PlayerArray)
     {
         AMyPlayerState* MPS = Cast<AMyPlayerState>(PS);
-        if (!MPS) continue;
+        if (!MPS || MPS == ExcludedPlayerState) continue;
 
         AllPS.Add(MPS);
         if (MPS->IsHost())

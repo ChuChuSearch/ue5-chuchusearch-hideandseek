@@ -7,6 +7,7 @@
 class USphereComponent;
 class UStaticMeshComponent;
 class UProjectileMovementComponent;
+class APropBase;
 
 UCLASS()
 class HIDE_API ASeekerProjectile : public AActor
@@ -32,6 +33,8 @@ protected:
     UFUNCTION()
     void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
         UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+    void DestroyHitProp(APropBase* Prop);
 
     virtual void BeginPlay() override;
 };

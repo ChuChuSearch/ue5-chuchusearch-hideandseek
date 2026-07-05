@@ -67,7 +67,14 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
     {
         if (!HitChar->IsSeeker() && !HitChar->IsEliminated())
         {
-            HitChar->ApplySeekerHit_Server();
+            if (APropBase* PossessedProp = HitChar->GetPossessedProp())
+            {
+                DestroyHitProp(PossessedProp);
+            }
+            else
+            {
+                HitChar->ApplySeekerHit_Server();
+            }
         }
 
         Destroy();
@@ -76,17 +83,42 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
 
     if (APropBase* Prop = Cast<APropBase>(OtherActor))
     {
-
-        if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
-        {
-            GS->RegisterDestroyedProp(Prop);
-            GS->TrySpawnClueFromDestroyedProp(Prop);
-        }
-
-        Prop->Destroy();
+        DestroyHitProp(Prop);
         Destroy();
         return;
     }
 
     Destroy();
+}
+
+void ASeekerProjectile::DestroyHitProp(APropBase* Prop)
+{
+    if (!HasAuthority() || !IsValid(Prop))
+    {
+        return;
+    }
+
+    AMyCharacter* PossessingCharacter = Prop->IsPossessedNet()
+        ? Prop->GetClaimingCharacter()
+        : nullptr;
+
+    if (IsValid(PossessingCharacter))
+    {
+        PossessingCharacter->HandlePossessedPropDestroyed_Server(Prop);
+    }
+
+    if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
+    {
+        GS->RegisterDestroyedProp(Prop);
+        GS->TrySpawnClueFromDestroyedProp(Prop);
+    }
+
+    Prop->Destroy();
+
+    if (IsValid(PossessingCharacter)
+        && !PossessingCharacter->IsSeeker()
+        && !PossessingCharacter->IsEliminated())
+    {
+        PossessingCharacter->ApplySeekerHit_Server();
+    }
 }

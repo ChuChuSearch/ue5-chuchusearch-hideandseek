@@ -37,12 +37,26 @@ void AMyGameState::SelectRandomClueProps()
     {
         if (APropBase* Prop = Cast<APropBase>(Actor))
         {
-            ValidProps.Add(Prop);
+            if (Prop->ActorHasTag(TEXT("ClueCandidate")))
+            {
+                Prop->EnsurePropId_Server();
+                ValidProps.Add(Prop);
+            }
         }
     }
 
+    UE_LOG(
+        LogTemp,
+        Log,
+        TEXT("Clue selection: FoundProps=%d, TaggedCandidates=%d, RequestedCount=%d, CluePickupClass=%s"),
+        FoundProps.Num(),
+        ValidProps.Num(),
+        CluePropCount,
+        *GetNameSafe(CluePickupClass.Get()));
+
     if (ValidProps.Num() <= 0)
     {
+        UE_LOG(LogTemp, Warning, TEXT("Clue selection failed: no APropBase actor has the ClueCandidate actor tag."));
         return;
     }
 
@@ -67,6 +81,14 @@ void AMyGameState::SelectRandomClueProps()
 
             CluePropIds.Add(PickedProp->GetPropId());
             ClueNumbers.Add(PickedClueNumber);
+
+            UE_LOG(
+                LogTemp,
+                Log,
+                TEXT("Clue assigned: Prop=%s, PropId=%s, ClueNumber=%d"),
+                *GetNameSafe(PickedProp),
+                *PickedProp->GetPropId().ToString(),
+                PickedClueNumber);
         }
     }
 
@@ -295,13 +317,24 @@ bool AMyGameState::TrySpawnClueFromDestroyedProp(APropBase* DestroyedProp)
 {
     if (!HasAuthority()) return false;
     if (!IsValid(DestroyedProp)) return false;
-    if (!CluePickupClass) return false;
+    if (!CluePickupClass)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Clue spawn failed: CluePickupClass is not configured on %s."), *GetNameSafe(this));
+        return false;
+    }
 
+    DestroyedProp->EnsurePropId_Server();
     const FName PropId = DestroyedProp->GetPropId();
 
     int32 ClueNumber = INDEX_NONE;
     if (!GetClueNumberByPropId(PropId, ClueNumber))
     {
+        UE_LOG(
+            LogTemp,
+            Log,
+            TEXT("Destroyed prop has no clue: Prop=%s, PropId=%s"),
+            *GetNameSafe(DestroyedProp),
+            *PropId.ToString());
         return false;
     }
 
@@ -320,10 +353,25 @@ bool AMyGameState::TrySpawnClueFromDestroyedProp(APropBase* DestroyedProp)
 
     if (!Clue)
     {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("Clue spawn failed: SourceProp=%s, PropId=%s, ClueNumber=%d"),
+            *GetNameSafe(DestroyedProp),
+            *PropId.ToString(),
+            ClueNumber);
         return false;
     }
 
     Clue->SetClueNumber(ClueNumber);
+
+    UE_LOG(
+        LogTemp,
+        Log,
+        TEXT("Clue spawned: SourceProp=%s, PropId=%s, ClueNumber=%d"),
+        *GetNameSafe(DestroyedProp),
+        *PropId.ToString(),
+        ClueNumber);
 
     return true;
 }

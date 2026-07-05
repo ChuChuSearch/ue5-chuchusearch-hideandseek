@@ -24,10 +24,12 @@ public:
     bool IsClaimed() const { return ClaimingCharacter != nullptr; }
     bool IsPossessedNet() const { return bPossessedNet; }
     bool IsPossessionBanned() const { return bPossessionBanned; }
+    AMyCharacter* GetClaimingCharacter() const { return ClaimingCharacter; }
 
     void SetPossessedState(bool bPossessed);
     void SetPossessedNet(bool bNew);
     void SetPossessionBanned_Server(bool bNewBanned);
+    void EnsurePropId_Server();
     void FinalizeReleaseTransform(const FVector& Location, const FRotator& Rotation);
 
     UFUNCTION(NetMulticast, Reliable)

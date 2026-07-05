@@ -40,11 +40,19 @@ void APropBase::BeginPlay()
 
     if (HasAuthority())
     {
-        if (PropId.IsNone())
-        {
-            PropId = FName(*GetName());
-        }
+        EnsurePropId_Server();
     }
+}
+
+void APropBase::EnsurePropId_Server()
+{
+    if (!HasAuthority() || !PropId.IsNone())
+    {
+        return;
+    }
+
+    PropId = FName(*GetName());
+    ForceNetUpdate();
 }
 
 void APropBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -136,8 +144,8 @@ void APropBase::SetPossessedState(bool bPossessed)
         // 카메라 붐이 오브젝트에 막히지 않게 해야 1인칭처럼 안 변함
         StaticMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
-        // 플레이어와는 충돌하지 않음
-        StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        // Use the mesh for close contact with other players; the owner ignores this actor.
+        StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     }
     else
     {

@@ -23,6 +23,7 @@ public:
     void RequestPossessProp(APropBase* Prop);
     void RequestReleaseProp();
     void ForceReleasePossessedProp_Server();
+    void HandlePossessedPropDestroyed_Server(APropBase* DestroyedProp);
     bool ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPropClass);
 
     void ToggleLocked();
@@ -47,6 +48,9 @@ public:
 
     UPROPERTY(EditDefaultsOnly, Category = "Possess", meta = (ClampMin = "0.0"))
     float ReleaseClearanceMargin = 12.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Possess", meta = (ClampMin = "0.1", ClampMax = "1.0"))
+    float PossessedCollisionBoundsScale = 0.9f;
 
     bool IsSeeker() const { return bIsSeeker; }
 
@@ -106,6 +110,7 @@ private:
 
     void ApplyPossessVisuals(bool bPossessingNow);
     void ApplyMoveIgnoreForProp(APropBase* NewProp);
+    void ApplyPossessionCollision(APropBase* NewProp);
     void ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock);
     void EndForcedPossessLock();
 
@@ -126,6 +131,9 @@ private:
 
     UPROPERTY()
     APropBase* LastPossessedProp = nullptr;
+
+    float OriginalCapsuleRadius = 0.f;
+    float OriginalCapsuleHalfHeight = 0.f;
 
     UPROPERTY(ReplicatedUsing = OnRep_IsSeeker)
     bool bIsSeeker = false;

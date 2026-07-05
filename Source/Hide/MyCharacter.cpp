@@ -71,6 +71,45 @@ void AMyCharacter::ForceReleasePossessedProp_Server()
     ReleasePossessedPropInternal(true);
 }
 
+void AMyCharacter::HandlePossessedPropDestroyed_Server(APropBase* DestroyedProp)
+{
+    if (!HasAuthority() || !DestroyedProp || PossessedProp != DestroyedProp)
+    {
+        return;
+    }
+
+    DestroyedProp->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+    PossessedProp = nullptr;
+    ApplyPossessionCollision(nullptr);
+    bLocked = false;
+    bForcedPossessLock = false;
+
+    if (GetWorld())
+    {
+        GetWorldTimerManager().ClearTimer(TH_ForcedPossessLock);
+    }
+
+    DestroyedProp->SetPossessedNet(false);
+    DestroyedProp->ReleaseClaim(this);
+    DestroyedProp->ForceNetUpdate();
+
+    OnRep_PossessedProp();
+    OnRep_Locked();
+    ForceNetUpdate();
+
+    if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
+    {
+        if (GS->GetGamePhase() == EGamePhase::ForcedSwap)
+        {
+            if (AMyPlayerController* MPC = Cast<AMyPlayerController>(GetController()))
+            {
+                MPC->ClientSetForcedSwapWarning(false, 0.0);
+            }
+        }
+    }
+}
+
 void AMyCharacter::ToggleLocked()
 {
     ServerToggleLocked();
@@ -122,7 +161,10 @@ bool AMyCharacter::FindCharacterReleaseLocation(APropBase* Prop, FVector& OutLoc
     const FVector Right = GetActorRightVector();
     const FVector BoundsCenter = PropMesh->Bounds.Origin;
     const FVector PropExtent = PropMesh->Bounds.BoxExtent;
-    const float CapsuleRadius = Capsule->GetScaledCapsuleRadius();
+    const FVector ActorScale = GetActorScale3D().GetAbs();
+    const float CapsuleRadius = OriginalCapsuleRadius > 0.f
+        ? OriginalCapsuleRadius * FMath::Max(ActorScale.X, ActorScale.Y)
+        : Capsule->GetScaledCapsuleRadius();
 
     const TArray<FVector> Directions = {
         Forward,
@@ -187,7 +229,9 @@ FVector AMyCharacter::ProjectCharacterReleaseLocationToGround(APropBase* Prop, c
     }
 
     const UStaticMeshComponent* PropMesh = Prop->GetStaticMesh();
-    const float CapsuleHalf = GetCapsuleHalfHeight();
+    const float CapsuleHalf = OriginalCapsuleHalfHeight > 0.f
+        ? OriginalCapsuleHalfHeight * GetActorScale3D().GetAbs().Z
+        : GetCapsuleHalfHeight();
     const float PropTop = PropMesh
         ? PropMesh->Bounds.Origin.Z + PropMesh->Bounds.BoxExtent.Z
         : GetActorLocation().Z;
@@ -239,15 +283,22 @@ bool AMyCharacter::IsCharacterReleaseLocationClear(APropBase* Prop, const FVecto
     const FVector CharacterDelta = Location - PropMesh->Bounds.Origin;
     const float SeparationX = FMath::Max(FMath::Abs(CharacterDelta.X) - PropExtent.X, 0.f);
     const float SeparationY = FMath::Max(FMath::Abs(CharacterDelta.Y) - PropExtent.Y, 0.f);
-    const float RequiredClearance = Capsule->GetScaledCapsuleRadius() + ReleaseClearanceMargin * 0.5f;
+    const FVector ActorScale = GetActorScale3D().GetAbs();
+    const float CharacterRadius = OriginalCapsuleRadius > 0.f
+        ? OriginalCapsuleRadius * FMath::Max(ActorScale.X, ActorScale.Y)
+        : Capsule->GetScaledCapsuleRadius();
+    const float CharacterHalfHeight = OriginalCapsuleHalfHeight > 0.f
+        ? OriginalCapsuleHalfHeight * ActorScale.Z
+        : Capsule->GetScaledCapsuleHalfHeight();
+    const float RequiredClearance = CharacterRadius + ReleaseClearanceMargin * 0.5f;
     if (FMath::Square(SeparationX) + FMath::Square(SeparationY) < FMath::Square(RequiredClearance))
     {
         return false;
     }
 
     const FCollisionShape Shape = FCollisionShape::MakeCapsule(
-        Capsule->GetScaledCapsuleRadius() * 0.95f,
-        Capsule->GetScaledCapsuleHalfHeight() * 0.95f);
+        CharacterRadius * 0.95f,
+        CharacterHalfHeight * 0.95f);
     FCollisionQueryParams Params(SCENE_QUERY_STAT(CharacterReleaseOverlap), false);
     Params.AddIgnoredActor(this);
     Params.AddIgnoredActor(Prop);
@@ -287,9 +338,10 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
     const FVector PropLocation = Old->GetActorLocation();
     const FRotator PropRotation = Old->GetActorRotation();
     Old->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-    SetActorLocation(CharacterReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
 
     PossessedProp = nullptr;
+    ApplyPossessionCollision(nullptr);
+    SetActorLocation(CharacterReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
     bLocked = false;
     bForcedPossessLock = false;
 
@@ -326,6 +378,12 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
 void AMyCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (const UCapsuleComponent* Capsule = GetCapsuleComponent())
+    {
+        OriginalCapsuleRadius = Capsule->GetUnscaledCapsuleRadius();
+        OriginalCapsuleHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+    }
 
     if (UCharacterMovementComponent* Move = GetCharacterMovement())
     {
@@ -373,6 +431,7 @@ void AMyCharacter::ServerRotateLocked_Implementation(float Dir)
 void AMyCharacter::OnRep_PossessedProp()
 {
     ApplyPossessVisuals(PossessedProp != nullptr);
+    ApplyPossessionCollision(PossessedProp);
     ApplyMoveIgnoreForProp(PossessedProp);
 }
 
@@ -414,6 +473,65 @@ void AMyCharacter::ApplyMoveIgnoreForProp(APropBase* NewProp)
     }
 
     LastPossessedProp = NewProp;
+}
+
+void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
+{
+    UCapsuleComponent* Capsule = GetCapsuleComponent();
+    if (!Capsule)
+    {
+        return;
+    }
+
+    if (OriginalCapsuleRadius <= 0.f || OriginalCapsuleHalfHeight <= 0.f)
+    {
+        OriginalCapsuleRadius = Capsule->GetUnscaledCapsuleRadius();
+        OriginalCapsuleHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+    }
+
+    float NewRadius = OriginalCapsuleRadius;
+    float NewHalfHeight = OriginalCapsuleHalfHeight;
+
+    if (NewProp)
+    {
+        if (const UStaticMeshComponent* PropMesh = NewProp->GetStaticMesh())
+        {
+            const FVector ActorScale = GetActorScale3D().GetAbs();
+            const float ScaleX = FMath::Max(static_cast<float>(ActorScale.X), KINDA_SMALL_NUMBER);
+            const float ScaleY = FMath::Max(static_cast<float>(ActorScale.Y), KINDA_SMALL_NUMBER);
+            const float ScaleZ = FMath::Max(static_cast<float>(ActorScale.Z), KINDA_SMALL_NUMBER);
+            const FVector PropExtent = PropMesh->Bounds.BoxExtent * PossessedCollisionBoundsScale;
+            const float PropExtentX = static_cast<float>(PropExtent.X);
+            const float PropExtentY = static_cast<float>(PropExtent.Y);
+            const float PropExtentZ = static_cast<float>(PropExtent.Z);
+
+            NewRadius = FMath::Max(
+                OriginalCapsuleRadius,
+                FMath::Min(PropExtentX / ScaleX, PropExtentY / ScaleY));
+            NewHalfHeight = FMath::Max3(
+                OriginalCapsuleHalfHeight,
+                PropExtentZ / ScaleZ,
+                NewRadius);
+        }
+    }
+
+    const float OldScaledHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+    Capsule->SetCapsuleSize(NewRadius, NewHalfHeight, true);
+    const float HalfHeightDelta = Capsule->GetScaledCapsuleHalfHeight() - OldScaledHalfHeight;
+
+    if (!FMath::IsNearlyZero(HalfHeightDelta))
+    {
+        AddActorWorldOffset(
+            FVector(0.f, 0.f, HalfHeightDelta),
+            false,
+            nullptr,
+            ETeleportType::TeleportPhysics);
+    }
+
+    if (NewProp && NewProp->GetAttachParentActor() == this)
+    {
+        NewProp->SetActorLocation(PropWorldLocationForCharacter(NewProp));
+    }
 }
 
 
@@ -610,8 +728,6 @@ void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
     const float Dist = FVector::Dist(GetActorLocation(), Prop->GetActorLocation());
     if (Dist > DestroySkillRange) return;
 
-    if (Prop->IsPossessedNet()) return;
-
     bIsDestroying = true;
     DestroyTargetProp = Prop;
 
@@ -649,6 +765,15 @@ void AMyCharacter::FinishDestroyPropSkill()
         return;
     }
 
+    AMyCharacter* PossessingCharacter = Target->IsPossessedNet()
+        ? Target->GetClaimingCharacter()
+        : nullptr;
+
+    if (IsValid(PossessingCharacter))
+    {
+        PossessingCharacter->HandlePossessedPropDestroyed_Server(Target);
+    }
+
     // 파괴 기록 저장 (탈락자가 생성할 목록은 GameState RespawnList로 가정)
     if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
     {
@@ -657,6 +782,13 @@ void AMyCharacter::FinishDestroyPropSkill()
     }
 
     Target->Destroy();
+
+    if (IsValid(PossessingCharacter)
+        && !PossessingCharacter->IsSeeker()
+        && !PossessingCharacter->IsEliminated())
+    {
+        PossessingCharacter->ApplySeekerHit_Server();
+    }
 
     OnRep_DestroySkillState();
     ForceNetUpdate();
@@ -874,9 +1006,10 @@ void AMyCharacter::DetachAndSyncRelease(APropBase* Prop)
 
     if (LastPossessedProp == Prop)
     {
-        LastPossessedProp = nullptr;
+        ApplyMoveIgnoreForProp(nullptr);
     }
 
+    ApplyPossessionCollision(nullptr);
     ApplyPossessVisuals(false);
 }
 

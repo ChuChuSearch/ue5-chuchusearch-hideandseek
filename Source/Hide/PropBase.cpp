@@ -146,6 +146,7 @@ void APropBase::SetPossessedState(bool bPossessed)
 
         // Use the mesh for close contact with other players; the owner ignores this actor.
         StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        StaticMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
     }
     else
     {

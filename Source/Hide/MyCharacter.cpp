@@ -12,6 +12,7 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 
 AMyCharacter::AMyCharacter()
@@ -38,6 +39,7 @@ void AMyCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     DOREPLIFETIME(AMyCharacter, bLocked);
     DOREPLIFETIME(AMyCharacter, bForcedPossessLock);
     DOREPLIFETIME(AMyCharacter, bIsSeeker);
+    DOREPLIFETIME(AMyCharacter, DestroyStartedServerTime);
     DOREPLIFETIME(AMyCharacter, bIsDestroying);
     DOREPLIFETIME(AMyCharacter, bDestroyOnCooldown);
     DOREPLIFETIME(AMyCharacter, bSeekerAttackOnCooldown);
@@ -489,6 +491,15 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
         OriginalCapsuleHalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
     }
 
+    if (!bOriginalCapsuleCollisionSaved)
+    {
+        OriginalCapsuleCollisionEnabled = Capsule->GetCollisionEnabled();
+        OriginalCapsulePawnResponse = Capsule->GetCollisionResponseToChannel(ECC_Pawn);
+        OriginalCapsuleVisibilityResponse = Capsule->GetCollisionResponseToChannel(ECC_Visibility);
+        OriginalCapsuleCameraResponse = Capsule->GetCollisionResponseToChannel(ECC_Camera);
+        bOriginalCapsuleCollisionSaved = true;
+    }
+
     float NewRadius = OriginalCapsuleRadius;
     float NewHalfHeight = OriginalCapsuleHalfHeight;
 
@@ -513,6 +524,18 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
                 PropExtentZ / ScaleZ,
                 NewRadius);
         }
+
+        Capsule->SetCollisionEnabled(OriginalCapsuleCollisionEnabled);
+        Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        Capsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+        Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+    }
+    else
+    {
+        Capsule->SetCollisionEnabled(OriginalCapsuleCollisionEnabled);
+        Capsule->SetCollisionResponseToChannel(ECC_Pawn, OriginalCapsulePawnResponse);
+        Capsule->SetCollisionResponseToChannel(ECC_Visibility, OriginalCapsuleVisibilityResponse);
+        Capsule->SetCollisionResponseToChannel(ECC_Camera, OriginalCapsuleCameraResponse);
     }
 
     const float OldScaledHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
@@ -730,6 +753,9 @@ void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
 
     bIsDestroying = true;
     DestroyTargetProp = Prop;
+    DestroyStartedServerTime = GetWorld() && GetWorld()->GetGameState()
+        ? GetWorld()->GetGameState()->GetServerWorldTimeSeconds()
+        : GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 
     bDestroyOnCooldown = true;
 
@@ -745,6 +771,7 @@ void AMyCharacter::FinishDestroyPropSkill()
     if (!HasAuthority()) return;
 
     bIsDestroying = false;
+    DestroyStartedServerTime = 0.0;
 
     APropBase* Target = DestroyTargetProp;
     DestroyTargetProp = nullptr;
@@ -804,8 +831,17 @@ void AMyCharacter::EndDestroyCooldown()
 
 void AMyCharacter::OnRep_DestroySkillState()
 {
-    // UI/이펙트 연결
-    // 예: bIsDestroying true면 3초 게이지 표시 등
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetController()))
+    {
+        if (bIsDestroying)
+        {
+            PC->ShowDestroyProgressUI(this);
+        }
+        else
+        {
+            PC->HideDestroyProgressUI();
+        }
+    }
 }
 
 void AMyCharacter::RequestSeekerAttack()

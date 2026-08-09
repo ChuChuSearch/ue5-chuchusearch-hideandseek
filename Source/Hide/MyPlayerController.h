@@ -15,6 +15,7 @@ class AGhostCharacter;
 class AMyPlayerState;
 class AMyGameState;
 class APasswordDoor;
+class UDestroyProgressWidget;
 
 UCLASS()
 class HIDE_API AMyPlayerController : public APlayerController
@@ -57,6 +58,9 @@ public:
     
     UFUNCTION(BlueprintCallable)
     void HideGameRoomUI();
+
+    void ShowDestroyProgressUI(AMyCharacter* SourceCharacter);
+    void HideDestroyProgressUI();
 
     virtual void OnRep_Pawn() override;
 
@@ -150,6 +154,12 @@ private:
 
     UPROPERTY()
     UUserWidget* GameRoomWidgetInstance = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UDestroyProgressWidget> WBP_DestroyProgress = nullptr;
+
+    UPROPERTY()
+    UDestroyProgressWidget* DestroyProgressWidgetInstance = nullptr;
 
     UPROPERTY(EditDefaultsOnly, Category = "UI")
     TSubclassOf<UUserWidget> WBP_PasswordInput = nullptr;

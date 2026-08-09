@@ -1,0 +1,26 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Target Name="EnsureMSBuildAssembliesNotCopied" AfterTargets="ResolvePackageAssets" Condition="'$(DisableMSBuildAssemblyCopyCheck)' != 'true'">
+    <ItemGroup>
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Framework'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Utilities.Core'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Tasks.Core'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Engine'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Conversion.Core'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Runtime'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Localization'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.Build.Engine'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'Microsoft.NET.StringTools'))" />
+      <_MSBuildAssembliesCopyLocalItems Include="@(RuntimeCopyLocalItems->WithMetadataValue('NuGetPackageId', 'NuGet.Frameworks'))" />
+      <MSBuildAssembliesCopyLocalItems Include="@(_MSBuildAssembliesCopyLocalItems->WithMetadataValue('CopyLocal', 'true')->WithMetadataValue('AssetType', 'runtime'))" />
+      <_DistinctMSBuildPackagesReferencedPoorly Include="@(MSBuildAssembliesCopyLocalItems->Metadata('NuGetPackageId')->Distinct())" />
+    </ItemGroup>
+
+    <Error
+      Condition="@(_DistinctMSBuildPackagesReferencedPoorly->Count()) > 0"
+      Code="MSBL001"
+      Text="A PackageReference to the package '%(_DistinctMSBuildPackagesReferencedPoorly.NuGetPackageId)' at version '%(_DistinctMSBuildPackagesReferencedPoorly.NuGetPackageVersion)' is present in this project without ExcludeAssets=&quot;runtime&quot; and PrivateAssets=&quot;all&quot; set. This can cause errors at run-time due to MSBuild assembly-loading."
+      HelpLink="https://aka.ms/msbuild/locator/diagnostics/MSBL001"
+      />
+  </Target>
+</Project>

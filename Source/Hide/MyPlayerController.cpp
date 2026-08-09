@@ -5,6 +5,7 @@
 #include "InputCoreTypes.h"
 
 #include "GhostCharacter.h"
+#include "DestroyProgressWidget.h"
 #include "MyCharacter.h"
 #include "MyGameMode.h"
 #include "MyGameState.h"
@@ -646,10 +647,48 @@ void AMyPlayerController::CloseGameRoomUI()
 {
     if (!IsLocalController()) return;
 
+    HideDestroyProgressUI();
+
     if (GameRoomWidgetInstance)
     {
         GameRoomWidgetInstance->RemoveFromParent();
         GameRoomWidgetInstance = nullptr;
+    }
+}
+
+void AMyPlayerController::ShowDestroyProgressUI(AMyCharacter* SourceCharacter)
+{
+    if (!IsLocalController() || !WBP_DestroyProgress || !IsValid(SourceCharacter))
+    {
+        return;
+    }
+
+    if (!DestroyProgressWidgetInstance)
+    {
+        DestroyProgressWidgetInstance = CreateWidget<UDestroyProgressWidget>(this, WBP_DestroyProgress);
+        if (!DestroyProgressWidgetInstance)
+        {
+            return;
+        }
+
+        DestroyProgressWidgetInstance->AddToViewport(50);
+    }
+
+    DestroyProgressWidgetInstance->BeginDestroyProgress(SourceCharacter);
+}
+
+void AMyPlayerController::HideDestroyProgressUI()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (DestroyProgressWidgetInstance)
+    {
+        DestroyProgressWidgetInstance->EndDestroyProgress();
+        DestroyProgressWidgetInstance->RemoveFromParent();
+        DestroyProgressWidgetInstance = nullptr;
     }
 }
 

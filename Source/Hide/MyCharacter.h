@@ -89,6 +89,15 @@ public:
     UFUNCTION(BlueprintCallable)
     int32 GetMaxSeekerHitsBeforeElimination() const { return MaxSeekerHitsBeforeElimination; }
 
+    UFUNCTION(BlueprintCallable, Category = "DestroySkill")
+    bool IsDestroyingProp() const { return bIsDestroying; }
+
+    UFUNCTION(BlueprintCallable, Category = "DestroySkill")
+    double GetDestroyStartedServerTime() const { return DestroyStartedServerTime; }
+
+    UFUNCTION(BlueprintCallable, Category = "DestroySkill")
+    float GetDestroyTimeSeconds() const { return DestroyTimeSeconds; }
+
     void ApplyEliminatedVisuals();
 
 private:
@@ -134,6 +143,11 @@ private:
 
     float OriginalCapsuleRadius = 0.f;
     float OriginalCapsuleHalfHeight = 0.f;
+    bool bOriginalCapsuleCollisionSaved = false;
+    ECollisionEnabled::Type OriginalCapsuleCollisionEnabled = ECollisionEnabled::QueryAndPhysics;
+    ECollisionResponse OriginalCapsulePawnResponse = ECR_Block;
+    ECollisionResponse OriginalCapsuleVisibilityResponse = ECR_Block;
+    ECollisionResponse OriginalCapsuleCameraResponse = ECR_Block;
 
     UPROPERTY(ReplicatedUsing = OnRep_IsSeeker)
     bool bIsSeeker = false;
@@ -165,6 +179,9 @@ private:
 
     UPROPERTY(Replicated)
     bool bDestroyOnCooldown = false;
+
+    UPROPERTY(Replicated)
+    double DestroyStartedServerTime = 0.0;
 
     UPROPERTY()
     APropBase* DestroyTargetProp = nullptr;

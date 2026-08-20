@@ -149,6 +149,9 @@ private:
     FTimerHandle TH_AttackHold;
     bool bHoldTriggered = false;
 
+    UPROPERTY()
+    APropBase* AttackHoldTarget = nullptr;
+
     UPROPERTY(EditDefaultsOnly, Category = "UI")
     TSubclassOf<UUserWidget> WBP_GameRoom = nullptr;
 

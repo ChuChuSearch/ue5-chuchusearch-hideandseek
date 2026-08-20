@@ -733,15 +733,22 @@ void AMyCharacter::OnRep_IsSeeker()
 void AMyCharacter::RequestDestroyPropSkill(APropBase* Prop)
 {
     if (bEliminated) return;
+    if (IsPossessing()) return;
     if (!Prop) return;
 
     ServerStartDestroyPropSkill(Prop);
 }   
 
+void AMyCharacter::RequestCancelDestroyPropSkill()
+{
+    ServerCancelDestroyPropSkill();
+}
+
 void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
 {
     if (!HasAuthority()) return;
     if (bEliminated) return;
+    if (IsPossessing()) return;
     if (!IsValid(Prop)) return;
 
     if (bIsDestroying) return;
@@ -761,6 +768,22 @@ void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
 
     GetWorldTimerManager().SetTimer(TH_DestroyFinish, this, &AMyCharacter::FinishDestroyPropSkill, DestroyTimeSeconds, false);
     GetWorldTimerManager().SetTimer(TH_DestroyCooldown, this, &AMyCharacter::EndDestroyCooldown, DestroyCooldownSeconds, false);
+
+    OnRep_DestroySkillState();
+    ForceNetUpdate();
+}
+
+void AMyCharacter::ServerCancelDestroyPropSkill_Implementation()
+{
+    if (!HasAuthority() || !bIsDestroying)
+    {
+        return;
+    }
+
+    GetWorldTimerManager().ClearTimer(TH_DestroyFinish);
+    bIsDestroying = false;
+    DestroyStartedServerTime = 0.0;
+    DestroyTargetProp = nullptr;
 
     OnRep_DestroySkillState();
     ForceNetUpdate();
@@ -886,12 +909,20 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
         PC->GetPlayerViewPoint(ViewLoc, ViewRot);
     }
 
+    const FVector Forward = ViewRot.Vector();
+    const float CapsuleRadius = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleRadius() : 34.f;
+    const FVector SpawnLoc = GetActorLocation() + FVector(0.f, 0.f, 60.f) + Forward * (CapsuleRadius + 8.f);
+
     FHitResult AimHit;
     FCollisionQueryParams AimParams(SCENE_QUERY_STAT(SeekerAimTrace), true);
     AimParams.AddIgnoredActor(this);
 
-    const FVector AimTraceStart = ViewLoc;
-    const FVector AimTraceEnd = AimTraceStart + ViewRot.Vector() * 10000.f;
+    // A third-person camera can sit behind nearby level geometry. Starting the aim
+    // trace in front of the projectile spawn plane prevents that geometry from
+    // becoming a target behind the character.
+    const float DistanceToSpawnPlane = FVector::DotProduct(SpawnLoc - ViewLoc, Forward);
+    const FVector AimTraceStart = ViewLoc + Forward * FMath::Max(DistanceToSpawnPlane + 10.f, 0.f);
+    const FVector AimTraceEnd = ViewLoc + Forward * 10000.f;
     const bool bAimHit = GetWorld()->LineTraceSingleByChannel(
         AimHit,
         AimTraceStart,
@@ -900,10 +931,12 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
         AimParams
     );
 
-    const FVector AimPoint = bAimHit ? AimHit.ImpactPoint : AimTraceEnd;
-    const FVector Forward = ViewRot.Vector();
-    const float CapsuleRadius = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleRadius() : 34.f;
-    const FVector SpawnLoc = GetActorLocation() + FVector(0.f, 0.f, 60.f) + Forward * (CapsuleRadius + 8.f);
+    FVector AimPoint = bAimHit ? AimHit.ImpactPoint : AimTraceEnd;
+    if (FVector::DotProduct(AimPoint - SpawnLoc, Forward) <= 1.f)
+    {
+        AimPoint = SpawnLoc + Forward * 10000.f;
+    }
+
     const FRotator SpawnRot = (AimPoint - SpawnLoc).Rotation();
 
     FActorSpawnParameters Params;

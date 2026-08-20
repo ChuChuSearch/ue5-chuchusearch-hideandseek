@@ -126,6 +126,18 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
 
     AMyCharacter* MC = GetMyCharacter();
     if (!MC) return;
+
+    if (bHoldTriggered && IsValid(AttackHoldTarget))
+    {
+        APropBase* CurrentAimProp = GetAimPropUnderCrosshair();
+        if (CurrentAimProp != AttackHoldTarget)
+        {
+            MC->RequestCancelDestroyPropSkill();
+            AttackHoldTarget = nullptr;
+            HideDestroyProgressUI();
+        }
+    }
+
     if (!MC->IsPossessing()) return;
     if (!MC->IsLocked()) return;
 
@@ -539,6 +551,15 @@ void AMyPlayerController::OnAttackPressed(const FInputActionValue& Value)
     }
 
     bHoldTriggered = false;
+    AttackHoldTarget = nullptr;
+
+    if (AMyCharacter* MC = GetMyCharacter())
+    {
+        if (MC->IsPossessing())
+        {
+            return;
+        }
+    }
 
     if (GetWorld())
     {
@@ -558,8 +579,10 @@ void AMyPlayerController::HandleAttackHoldTriggered()
 
     AMyCharacter* MC = GetMyCharacter();
     if (!MC) return;
+    if (MC->IsPossessing()) return;
 
     APropBase* AimProp = GetAimPropUnderCrosshair();
+    AttackHoldTarget = AimProp;
     MC->RequestDestroyPropSkill(AimProp);
 }
 
@@ -572,6 +595,14 @@ void AMyPlayerController::OnAttackReleased(const FInputActionValue& Value)
 
     if (bHoldTriggered)
     {
+        if (AMyCharacter* MC = GetMyCharacter())
+        {
+            MC->RequestCancelDestroyPropSkill();
+        }
+
+        AttackHoldTarget = nullptr;
+        bHoldTriggered = false;
+        HideDestroyProgressUI();
         return;
     }
 

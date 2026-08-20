@@ -57,6 +57,7 @@ public:
     void SetIsSeeker_Server(bool bNewIsSeeker);
 
     void RequestDestroyPropSkill(APropBase* Prop);
+    void RequestCancelDestroyPropSkill();
 
     UPROPERTY(EditDefaultsOnly, Category = "DestroySkill")
     float DestroySkillRange = 250.f;
@@ -170,6 +171,9 @@ private:
     // --- Destroy skill RPC/State ---
     UFUNCTION(Server, Reliable)
     void ServerStartDestroyPropSkill(APropBase* Prop);
+
+    UFUNCTION(Server, Reliable)
+    void ServerCancelDestroyPropSkill();
 
     void FinishDestroyPropSkill(); // 서버 타이머 콜백
     void EndDestroyCooldown();     // 서버 타이머 콜백

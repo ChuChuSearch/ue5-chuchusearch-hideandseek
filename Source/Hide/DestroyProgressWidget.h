@@ -40,6 +40,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Destroy Progress")
     bool bHideWhenInactive = true;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Destroy Progress", meta = (ClampMin = "1.0"))
+    FVector2D ProgressWidgetSize = FVector2D(96.f, 96.f);
+
     UFUNCTION(BlueprintImplementableEvent, Category = "Destroy Progress")
     void OnDestroyProgressUpdated(float Progress, float RemainingSeconds);
 
@@ -47,6 +50,7 @@ protected:
     void OnDestroyProgressActiveChanged(bool bIsActive);
 
 private:
+    void UpdateViewportPlacement();
     void RefreshProgress();
     void ApplyProgress(float Progress, float RemainingSeconds);
 

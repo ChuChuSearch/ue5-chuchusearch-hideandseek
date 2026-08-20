@@ -2,17 +2,33 @@
 
 #include "MyCharacter.h"
 
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
+#include "Engine/Engine.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
 void UDestroyProgressWidget::NativeConstruct()
 {
     Super::NativeConstruct();
 
+    UpdateViewportPlacement();
+
     if (ProgressImage)
     {
+        ProgressImage->SetDesiredSizeOverride(ProgressWidgetSize);
+
+        if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(ProgressImage->Slot))
+        {
+            CanvasSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+            CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+            CanvasSlot->SetPosition(FVector2D::ZeroVector);
+            CanvasSlot->SetSize(ProgressWidgetSize);
+            CanvasSlot->SetAutoSize(false);
+        }
+
         ProgressMaterial = ProgressImage->GetDynamicMaterial();
     }
 
@@ -27,6 +43,7 @@ void UDestroyProgressWidget::NativeConstruct()
 void UDestroyProgressWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
+    UpdateViewportPlacement();
     RefreshProgress();
 }
 
@@ -35,9 +52,39 @@ void UDestroyProgressWidget::BeginDestroyProgress(AMyCharacter* InCharacter)
     SourceCharacter = InCharacter;
     bProgressActive = IsValid(SourceCharacter) && SourceCharacter->IsDestroyingProp();
 
+    UpdateViewportPlacement();
     SetVisibility(bProgressActive ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
     OnDestroyProgressActiveChanged(bProgressActive);
     RefreshProgress();
+}
+
+void UDestroyProgressWidget::UpdateViewportPlacement()
+{
+    FVector2D ViewportSize = FVector2D::ZeroVector;
+
+    if (APlayerController* OwningPlayer = GetOwningPlayer())
+    {
+        int32 SizeX = 0;
+        int32 SizeY = 0;
+        OwningPlayer->GetViewportSize(SizeX, SizeY);
+        ViewportSize = FVector2D(static_cast<float>(SizeX), static_cast<float>(SizeY));
+    }
+
+    if (ViewportSize.IsNearlyZero() && GEngine && GEngine->GameViewport)
+    {
+        GEngine->GameViewport->GetViewportSize(ViewportSize);
+    }
+
+    if (ViewportSize.IsNearlyZero())
+    {
+        return;
+    }
+
+    SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
+    // ViewportSize is expressed in physical pixels. Let UMG remove the current
+    // DPI scale so the widget remains exactly centered at every resolution/UI scale.
+    SetPositionInViewport(ViewportSize * 0.5f, true);
+    SetDesiredSizeInViewport(ProgressWidgetSize);
 }
 
 void UDestroyProgressWidget::EndDestroyProgress()

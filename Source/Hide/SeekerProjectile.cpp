@@ -2,6 +2,9 @@
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 
 #include "MyCharacter.h"
@@ -26,6 +29,10 @@ ASeekerProjectile::ASeekerProjectile()
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
     Mesh->SetupAttachment(Collision);
     Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    ProjectileEffect = CreateDefaultSubobject<UNiagaraComponent>(TEXT("ProjectileEffect"));
+    ProjectileEffect->SetupAttachment(Collision);
+    ProjectileEffect->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
     ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
     ProjectileMovement->InitialSpeed = 2000.f;
@@ -55,7 +62,7 @@ void ASeekerProjectile::BeginPlay()
 }
 
 void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
-    UPrimitiveComponent*, FVector, const FHitResult&)
+    UPrimitiveComponent*, FVector, const FHitResult& Hit)
 {
 
     if (!HasAuthority() || !IsValid(OtherActor))
@@ -65,7 +72,9 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
 
     if (AMyCharacter* HitChar = Cast<AMyCharacter>(OtherActor))
     {
-        if (!HitChar->IsSeeker() && !HitChar->IsEliminated())
+        const bool bIsRunnerTarget = !HitChar->IsSeeker() && !HitChar->IsEliminated();
+
+        if (bIsRunnerTarget)
         {
             if (APropBase* PossessedProp = HitChar->GetPossessedProp())
             {
@@ -77,18 +86,48 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
             }
         }
 
+        MulticastSpawnImpactEffect(bIsRunnerTarget, Hit.ImpactPoint, Hit.ImpactNormal);
         Destroy();
         return;
     }
 
     if (APropBase* Prop = Cast<APropBase>(OtherActor))
     {
+        MulticastSpawnImpactEffect(true, Hit.ImpactPoint, Hit.ImpactNormal);
         DestroyHitProp(Prop);
         Destroy();
         return;
     }
 
+    MulticastSpawnImpactEffect(false, Hit.ImpactPoint, Hit.ImpactNormal);
     Destroy();
+}
+
+void ASeekerProjectile::MulticastSpawnImpactEffect_Implementation(
+    bool bTargetImpact,
+    FVector_NetQuantize ImpactPoint,
+    FVector_NetQuantizeNormal ImpactNormal)
+{
+    UNiagaraSystem* Effect = bTargetImpact ? TargetImpactEffect : WorldImpactEffect;
+    if (!Effect || !GetWorld())
+    {
+        return;
+    }
+
+    const FVector SafeNormal = ImpactNormal.IsNearlyZero() ? FVector::UpVector : FVector(ImpactNormal);
+    const FRotator EffectRotation = SafeNormal.Rotation();
+    const FVector EffectScale(ImpactEffectScale);
+
+    UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+        this,
+        Effect,
+        ImpactPoint,
+        EffectRotation,
+        EffectScale,
+        true,
+        true,
+        ENCPoolMethod::AutoRelease,
+        true);
 }
 
 void ASeekerProjectile::DestroyHitProp(APropBase* Prop)

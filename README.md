@@ -6,7 +6,14 @@
 
 3인 팀 프로젝트에서 **프로그래밍을 전담**하여 Unreal Engine의  
 **C++ / Blueprint**를 기반으로 게임 시스템과 플레이어 상호작용 기능을 구현하고 있습니다.
+---
+## 🎬 Gameplay Video
 
+### ChuChuSearch 시연영상
+
+[![ChuChuSearch Gameplay](https://img.youtube.com/vi/NzZujXlLXhQ/maxresdefault.jpg)](https://youtu.be/NzZujXlLXhQ)
+
+[![YouTube](https://img.shields.io/badge/▶%20Watch%20on%20YouTube-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/NzZujXlLXhQ)
 ---
 
 ## 🛠 Tech Stack

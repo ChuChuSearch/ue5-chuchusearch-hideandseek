@@ -76,3 +76,5 @@ DerivedDataCache/*
 
 # Releases
 Releases/*
+/Content/StarterContent
+/Content/_ExternalAssets

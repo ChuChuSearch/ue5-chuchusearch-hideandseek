@@ -6,6 +6,9 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+#include "Sound/SoundAttenuation.h"
 
 #include "MyCharacter.h"
 #include "PropBase.h"
@@ -59,6 +62,13 @@ void ASeekerProjectile::BeginPlay()
 
         // 쏜 캐릭터도 자기 투사체를 무시해서 앞으로 걸으며 쏠 때 막히지 않게 한다.
         Inst->MoveIgnoreActorAdd(this);
+    }
+
+    // 발사 소리: 투사체는 복제 액터라 BeginPlay가 서버/각 클라에서 실행되므로 RPC 없이 모두에게 들린다.
+    // (데디케이티드 서버는 오디오 장치가 없어 자동으로 재생하지 않음)
+    if (FireSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), FireSoundVolume, 1.f, 0.f, SoundAttenuation);
     }
 
     SetLifeSpan(LifeSeconds);
@@ -121,8 +131,19 @@ void ASeekerProjectile::MulticastSpawnImpactEffect_Implementation(
     FVector_NetQuantize ImpactPoint,
     FVector_NetQuantizeNormal ImpactNormal)
 {
+    if (!GetWorld())
+    {
+        return;
+    }
+
+    // 충돌 소리(대상/지형 구분). 이펙트가 없어도 소리는 재생한다.
+    if (USoundBase* ImpactSound = bTargetImpact ? TargetImpactSound : WorldImpactSound)
+    {
+        UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, ImpactPoint, ImpactSoundVolume, 1.f, 0.f, SoundAttenuation);
+    }
+
     UNiagaraSystem* Effect = bTargetImpact ? TargetImpactEffect : WorldImpactEffect;
-    if (!Effect || !GetWorld())
+    if (!Effect)
     {
         return;
     }

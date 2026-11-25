@@ -10,6 +10,8 @@ class UProjectileMovementComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
 class APropBase;
+class USoundBase;
+class USoundAttenuation;
 
 UCLASS()
 class HIDE_API ASeekerProjectile : public AActor
@@ -46,6 +48,29 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Effects", meta = (ClampMin = "0.01"))
     float ImpactEffectScale = 1.0f;
+
+    // ===== Sound =====
+    /** 발사 순간 투사체 위치에서 재생 */
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* FireSound = nullptr;
+
+    /** 러너/프롭에 맞았을 때 */
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* TargetImpactSound = nullptr;
+
+    /** 벽/바닥 등에 맞았을 때 */
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* WorldImpactSound = nullptr;
+
+    /** 거리 감쇠 설정. 비워 두면 사운드 에셋 자체 설정을 따른다. */
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundAttenuation* SoundAttenuation = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float FireSoundVolume = 1.0f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float ImpactSoundVolume = 1.0f;
 
     UFUNCTION()
     void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,

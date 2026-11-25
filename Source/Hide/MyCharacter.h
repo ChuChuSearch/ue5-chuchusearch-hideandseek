@@ -29,15 +29,6 @@ public:
     void ToggleLocked();
     void RequestRotateLocked(float Dir);
 
-    // 빙의 중인 프롭이 기울어져 있으면 Yaw만 남기고 똑바로 세운다(R키).
-    void RequestResetPropRotation();
-
-    // 빙의 중이면 캐릭터 모습을 숨기고 아니면 보이게 한다.
-    // 캐릭터/프롭 어느 쪽 복제가 먼저 도착해도 맞게 되도록 양쪽 OnRep에서 호출한다.
-    // HintProp: 이 캐릭터가 빙의했다고 복제된 프롭(아직 부착 복제가 안 왔을 수 있음)
-    void RefreshPossessVisuals(const APropBase* HintProp = nullptr);
-    bool IsVisuallyPossessing(const APropBase* HintProp = nullptr) const;
-
     bool IsPossessing() const { return PossessedProp != nullptr; }
     APropBase* GetPossessedProp() const { return PossessedProp; }
     bool IsLocked() const { return bLocked; }
@@ -125,15 +116,6 @@ private:
 
     UFUNCTION(Server, Unreliable)
     void ServerRotateLocked(float Dir);
-
-    UFUNCTION(Server, Reliable)
-    void ServerResetPropRotation();
-
-    // 회전이 바뀌면 프롭 바운드가 달라지므로 모든 클라에서 캡슐 크기/프롭 높이를 다시 맞춘다.
-    UFUNCTION(NetMulticast, Reliable)
-    void MulticastApplyPropRotation(FRotator NewRotation);
-
-    void ApplyPossessedPropRotation(const FRotator& NewRotation);
 
     // 서버 회전량을 실제 경과 시간으로 제한하기 위한 마지막 처리 시각(복제 안 함).
     double LastServerRotateTime = -1.0;

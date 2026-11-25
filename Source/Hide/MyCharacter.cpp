@@ -134,47 +134,6 @@ void AMyCharacter::RequestRotateLocked(float Dir)
     ServerRotateLocked(Dir);
 }
 
-void AMyCharacter::RequestResetPropRotation()
-{
-    if (!PossessedProp) return;
-
-    const FRotator Current = PossessedProp->GetActorRotation();
-    if (FMath::IsNearlyZero(Current.Pitch, 0.5f) && FMath::IsNearlyZero(Current.Roll, 0.5f))
-    {
-        return; // 이미 똑바로 서 있음
-    }
-
-    ServerResetPropRotation();
-}
-
-void AMyCharacter::ServerResetPropRotation_Implementation()
-{
-    if (!PossessedProp || bEliminated) return;
-    if (PossessedProp->GetAttachParentActor() != this) return;
-
-    const FRotator Upright = PossessedProp->GetUprightRotation();
-    if (Upright.Equals(PossessedProp->GetActorRotation(), 0.5f)) return;
-
-    // 멀티캐스트는 서버(리슨 서버 포함)에서도 실행된다.
-    MulticastApplyPropRotation(Upright);
-    ForceNetUpdate();
-    PossessedProp->ForceNetUpdate();
-}
-
-void AMyCharacter::MulticastApplyPropRotation_Implementation(FRotator NewRotation)
-{
-    ApplyPossessedPropRotation(NewRotation);
-}
-
-void AMyCharacter::ApplyPossessedPropRotation(const FRotator& NewRotation)
-{
-    if (!PossessedProp) return;
-
-    PossessedProp->SetActorRotation(NewRotation, ETeleportType::TeleportPhysics);
-    // 세우면 바운드(높이/폭)가 바뀌므로 캡슐 크기와 프롭 바닥 높이를 다시 맞춘다.
-    ApplyPossessionCollision(PossessedProp);
-}
-
 
 float AMyCharacter::GetCapsuleHalfHeight() const
 {
@@ -400,8 +359,6 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
         Old->MulticastFinalizeReleaseTransform(PropLocation, PropRotation);
         Old->SetPossessedNet(false);
         Old->ReleaseClaim(this);
-        // 공중(점프 중, 다른 물체 위에서 밀려남 등)에서 해제하면 떨어지게 한다.
-        Old->StartFallingIfAirborne_Server();
         Old->ForceNetUpdate();
     }
 
@@ -435,9 +392,6 @@ void AMyCharacter::BeginPlay()
     {
         Move->JumpZVelocity *= FMath::Max(0.1f, JumpStrengthMultiplier);
     }
-
-    // 이미 빙의 중인 상태로 복제되어 생성된 경우(늦게 보이게 된 캐릭터 등) 모습을 맞춘다.
-    RefreshPossessVisuals();
 }
 
 void AMyCharacter::EndForcedPossessLock()
@@ -557,48 +511,9 @@ bool AMyCharacter::HasLineOfSightToProp(const APropBase* Prop) const
 
 void AMyCharacter::OnRep_PossessedProp()
 {
-    RefreshPossessVisuals();
+    ApplyPossessVisuals(PossessedProp != nullptr);
     ApplyPossessionCollision(PossessedProp);
     ApplyMoveIgnoreForProp(PossessedProp);
-}
-
-bool AMyCharacter::IsVisuallyPossessing(const APropBase* HintProp) const
-{
-    if (PossessedProp)
-    {
-        return true;
-    }
-
-    if (HintProp && HintProp->ShouldHidePossessor() && HintProp->GetClaimingCharacter() == this)
-    {
-        return true;
-    }
-
-    // 클라에서 PossessedProp 복제가 늦거나(프롭 참조 미해결) 순서가 어긋나도,
-    // 빙의 상태인 프롭이 이 캐릭터에 붙어 있으면 빙의 중으로 본다.
-    TArray<AActor*> AttachedActors;
-    GetAttachedActors(AttachedActors);
-    for (const AActor* Attached : AttachedActors)
-    {
-        const APropBase* Prop = Cast<APropBase>(Attached);
-        if (Prop && Prop->ShouldHidePossessor())
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void AMyCharacter::RefreshPossessVisuals(const APropBase* HintProp)
-{
-    // 탈락 처리로 숨긴 모습을 다시 켜지 않는다.
-    if (bEliminated)
-    {
-        return;
-    }
-
-    ApplyPossessVisuals(IsVisuallyPossessing(HintProp));
 }
 
 void AMyCharacter::OnRep_Locked()

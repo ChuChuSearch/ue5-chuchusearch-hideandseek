@@ -28,6 +28,29 @@ void AMyGameMode::BeginPlay()
 }
 
 
+bool AMyGameMode::IsPlayInEditorWorld() const
+{
+    const UWorld* World = GetWorld();
+    return World && World->WorldType == EWorldType::PIE;
+}
+
+void AMyGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+    Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+    if (!ErrorMessage.IsEmpty())
+    {
+        return;
+    }
+
+    // seamless travel로 넘어온 플레이어는 PreLogin을 거치지 않으므로,
+    // 여기 들어오는 건 게임 도중 새로 접속하려는 경우다.
+    if (bRejectJoinInProgress && !IsPlayInEditorWorld())
+    {
+        ErrorMessage = TEXT("Match in progress");
+        UE_LOG(LogTemp, Log, TEXT("Rejected join-in-progress login from %s."), *Address);
+    }
+}
+
 void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
 {
     Super::HandleStartingNewPlayer_Implementation(NewPlayer);
@@ -41,6 +64,14 @@ void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewP
     }
 
     AMyPlayerState* PS = NewPlayer->GetPlayerState<AMyPlayerState>();
+
+    // 대기실에서 역할을 받지 못한 플레이어에게는 캐릭터를 주지 않는다(PIE 테스트 제외).
+    if ((!PS || PS->GetFinalRole() == EFinalRole::None) && !IsPlayInEditorWorld())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Not spawning %s: no assigned role."), *GetNameSafe(NewPlayer));
+        return;
+    }
+
     const bool bSeeker = (PS && PS->GetFinalRole() == EFinalRole::Seeker);
 
     SpawnPlayerAsRole(NewPlayer, bSeeker);

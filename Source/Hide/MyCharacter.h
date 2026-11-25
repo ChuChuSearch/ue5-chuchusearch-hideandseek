@@ -76,9 +76,10 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "Attack")
     float SeekerAttackCooldownSeconds = 0.4f; // 연타 방지용
 
-    // 숨는 시간(HideTime) 동안 술래의 공격/파괴 스킬을 서버에서 막는다.
+    // true면 숨는 시간(HideTime) 동안 술래의 공격/파괴 스킬을 서버에서 막는다.
+    // 기존 플레이 규칙을 유지하기 위해 기본값은 false(허용).
     UPROPERTY(EditDefaultsOnly, Category = "Attack")
-    bool bBlockSeekerActionsDuringHideTime = true;
+    bool bBlockSeekerActionsDuringHideTime = false;
 
     // ===== Elimination (minimal) =====
     UFUNCTION(BlueprintCallable)
@@ -129,6 +130,8 @@ private:
     // 서버 검증 헬퍼
     bool IsActionBlockedByGamePhase() const;
     bool HasLineOfSightToProp(const APropBase* Prop) const;
+    bool IsTeammatePossessedProp(const APropBase* Prop) const;
+    void TryPossess_Server(APropBase* Prop, bool bRequireLineOfSight);
 
     UFUNCTION()
     void OnRep_PossessedProp();

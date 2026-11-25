@@ -464,6 +464,23 @@ bool AMyCharacter::IsActionBlockedByGamePhase() const
     return bIsSeeker && bBlockSeekerActionsDuringHideTime && Phase == EGamePhase::HideTime;
 }
 
+bool AMyCharacter::IsTeammatePossessedProp(const APropBase* Prop) const
+{
+    if (!IsValid(Prop) || !Prop->IsPossessedNet())
+    {
+        return false;
+    }
+
+    const AMyCharacter* Possessor = Prop->GetClaimingCharacter();
+    if (!IsValid(Possessor) || Possessor == this)
+    {
+        return false;
+    }
+
+    // 같은 편(술래-술래, 러너-러너)이면 팀원
+    return Possessor->IsSeeker() == bIsSeeker;
+}
+
 bool AMyCharacter::HasLineOfSightToProp(const APropBase* Prop) const
 {
     if (!IsValid(Prop) || !GetWorld())
@@ -643,13 +660,24 @@ void AMyCharacter::ServerRequestPossess_Implementation()
 
 void AMyCharacter::ServerTryPossess_Implementation(APropBase* Prop)
 {
-    // 클라이언트가 이 RPC를 직접 호출할 수 있으므로 역할/상태를 서버에서 다시 검사한다.
+    // 클라이언트 요청 경로: 시야 검사 포함
+    TryPossess_Server(Prop, true);
+}
+
+void AMyCharacter::TryPossess_Server(APropBase* Prop, bool bRequireLineOfSight)
+{
+    if (!HasAuthority()) return;
+
+    // 클라이언트가 RPC를 직접 호출할 수 있으므로 역할/상태를 서버에서 다시 검사한다.
     if (bIsSeeker || bEliminated) return;
     if (!IsValid(Prop)) return;
     if (Prop->IsPossessionBanned()) return;
 
     const float Dist = FVector::Dist(GetActorLocation(), Prop->GetActorLocation());
     if (Dist > MaxPossessDistance) return;
+
+    // 벽 너머 프롭 빙의 차단
+    if (bRequireLineOfSight && !HasLineOfSightToProp(Prop)) return;
 
     // 이미 빙의 중이면 먼저 해제
     if (PossessedProp)
@@ -762,7 +790,8 @@ bool AMyCharacter::ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPr
         return false;
     }
 
-    ServerTryPossess(NewProp);
+    // 강제 교체는 서버가 캐릭터 위치에 직접 생성한 프롭이므로 시야 검사 생략
+    TryPossess_Server(NewProp, false);
     if (PossessedProp == NewProp && ForcedPossessLockSeconds > 0.0f)
     {
         bForcedPossessLock = true;
@@ -845,6 +874,7 @@ void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
     const float Dist = FVector::Dist(GetActorLocation(), Prop->GetActorLocation());
     if (Dist > DestroySkillRange) return;
     if (!HasLineOfSightToProp(Prop)) return;
+    if (IsTeammatePossessedProp(Prop)) return;
 
     bIsDestroying = true;
     DestroyTargetProp = Prop;
@@ -899,7 +929,8 @@ void AMyCharacter::FinishDestroyPropSkill()
     if (Dist > DestroySkillRange
         || bEliminated
         || IsActionBlockedByGamePhase()
-        || !HasLineOfSightToProp(Target))
+        || !HasLineOfSightToProp(Target)
+        || IsTeammatePossessedProp(Target)) // 파괴 진행 중에 팀원이 빙의한 경우
     {
         OnRep_DestroySkillState();
         ForceNetUpdate();
@@ -990,11 +1021,13 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
 
     if (IsActionBlockedByGamePhase())
     {
+        UE_LOG(LogTemp, Log, TEXT("Seeker attack blocked by game phase (%s)."), *GetNameSafe(this));
         return;
     }
 
     if (!SeekerProjectileClass)
     {
+        UE_LOG(LogTemp, Warning, TEXT("Seeker attack failed: SeekerProjectileClass is not set on %s."), *GetNameSafe(this));
         return;
     }
 

@@ -12,6 +12,21 @@ AWaitRoomGameMode::AWaitRoomGameMode()
     bUseSeamlessTravel = true;
 }
 
+void AWaitRoomGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+    Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+    if (!ErrorMessage.IsEmpty())
+    {
+        return;
+    }
+
+    if (MaxLobbyPlayers > 0 && GetNumPlayers() >= MaxLobbyPlayers)
+    {
+        ErrorMessage = TEXT("Server full");
+        UE_LOG(LogTemp, Log, TEXT("Rejected lobby login from %s: lobby full (%d/%d)."), *Address, GetNumPlayers(), MaxLobbyPlayers);
+    }
+}
+
 void AWaitRoomGameMode::PostLogin(APlayerController* NewPlayer)
 {
     Super::PostLogin(NewPlayer);
@@ -178,7 +193,7 @@ bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC)
         return false;
     }
 
-    if (PlayerCount > 4) return false;
+    if (MaxLobbyPlayers > 0 && PlayerCount > MaxLobbyPlayers) return false;
 
     AMyPlayerState* SeekerPS = nullptr;
     if (!PickSeeker(SeekerPS) || !SeekerPS) return false;

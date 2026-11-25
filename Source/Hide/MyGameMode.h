@@ -21,6 +21,7 @@ public:
     AMyGameMode();
 
     virtual void BeginPlay() override;
+    virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
     virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
     virtual void Logout(AController* Exiting) override;
 
@@ -49,6 +50,13 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Spawn")
     bool bAutoSpawnOnLogin = true;
+
+    // 게임 맵은 대기실에서 seamless travel로 넘어온 플레이어만 받는다.
+    // 새 접속(PreLogin)은 거부. PIE 테스트(게임 맵 바로 실행)에서는 적용하지 않음.
+    UPROPERTY(EditDefaultsOnly, Category = "Spawn")
+    bool bRejectJoinInProgress = true;
+
+    bool IsPlayInEditorWorld() const;
 
     UPROPERTY(BlueprintReadOnly, Category = "Victory")
     bool bGameEnded = false;

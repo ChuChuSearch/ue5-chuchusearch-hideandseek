@@ -421,13 +421,74 @@ void AMyCharacter::ServerRotateLocked_Implementation(float Dir)
 {
     if (!PossessedProp) return;
     if (!bLocked) return;
-    if (FMath::IsNearlyZero(Dir)) return;
+    if (bEliminated) return;
+    if (!FMath::IsFinite(Dir) || FMath::IsNearlyZero(Dir)) return;
+    if (!GetWorld()) return;
 
-    const float Dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
-    const float YawDelta = Dir * LockedRotateDegPerSec * Dt;
+    // 입력값은 방향만 의미하므로 -1~1로 제한한다.
+    Dir = FMath::Clamp(Dir, -1.f, 1.f);
+
+    // 회전량은 서버 기준 경과 시간으로 계산한다.
+    // (같은 프레임에 RPC를 여러 번 보내도 회전 속도가 빨라지지 않게 함)
+    constexpr double MaxRotateStepSeconds = 0.1;
+    const double Now = GetWorld()->GetTimeSeconds();
+    const double SinceLast = Now - LastServerRotateTime;
+    // 처음 누르거나 한동안 입력이 없었다면 한 프레임 분량만 적용(누르는 순간 튀지 않게).
+    const double Elapsed = (LastServerRotateTime < 0.0 || SinceLast > MaxRotateStepSeconds)
+        ? FMath::Min<double>(GetWorld()->GetDeltaSeconds(), MaxRotateStepSeconds)
+        : FMath::Max(0.0, SinceLast);
+    LastServerRotateTime = Now;
+
+    const float YawDelta = Dir * LockedRotateDegPerSec * static_cast<float>(Elapsed);
+    if (FMath::IsNearlyZero(YawDelta)) return;
 
     AddActorWorldRotation(FRotator(0.f, YawDelta, 0.f));
     ForceNetUpdate();
+}
+
+bool AMyCharacter::IsActionBlockedByGamePhase() const
+{
+    const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (!GS)
+    {
+        return false;
+    }
+
+    const EGamePhase Phase = GS->GetGamePhase();
+    if (Phase == EGamePhase::Ended)
+    {
+        return true;
+    }
+
+    return bIsSeeker && bBlockSeekerActionsDuringHideTime && Phase == EGamePhase::HideTime;
+}
+
+bool AMyCharacter::HasLineOfSightToProp(const APropBase* Prop) const
+{
+    if (!IsValid(Prop) || !GetWorld())
+    {
+        return false;
+    }
+
+    FVector EyeLoc;
+    FRotator EyeRot;
+    GetActorEyesViewPoint(EyeLoc, EyeRot);
+
+    const UStaticMeshComponent* PropMesh = Prop->GetStaticMesh();
+    const FVector Target = PropMesh ? PropMesh->Bounds.Origin : Prop->GetActorLocation();
+
+    FHitResult Hit;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(DestroySkillSightTrace), true);
+    Params.AddIgnoredActor(this);
+    if (PossessedProp)
+    {
+        Params.AddIgnoredActor(PossessedProp);
+    }
+
+    const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, EyeLoc, Target, ECC_Visibility, Params);
+
+    // 아무것도 안 맞았거나 대상 프롭이 먼저 맞으면 시야 확보.
+    return !bHit || Hit.GetActor() == Prop;
 }
 
 void AMyCharacter::OnRep_PossessedProp()
@@ -755,10 +816,12 @@ void AMyCharacter::ServerStartDestroyPropSkill_Implementation(APropBase* Prop)
 
     if (bIsDestroying) return;
     if (bDestroyOnCooldown) return;
+    if (IsActionBlockedByGamePhase()) return;
 
-    // 서버에서 거리 검증 (치팅 방지)
+    // 서버에서 거리 + 시야 검증 (치팅 방지: 벽 너머 프롭 파괴 차단)
     const float Dist = FVector::Dist(GetActorLocation(), Prop->GetActorLocation());
     if (Dist > DestroySkillRange) return;
+    if (!HasLineOfSightToProp(Prop)) return;
 
     bIsDestroying = true;
     DestroyTargetProp = Prop;
@@ -808,9 +871,12 @@ void AMyCharacter::FinishDestroyPropSkill()
         return;
     }
 
-    // 완료 시점 거리 재검증(멀어졌으면 실패 처리)
+    // 완료 시점 재검증(멀어졌거나, 가려졌거나, 게임이 끝났거나, 그 사이 탈락했으면 실패 처리)
     const float Dist = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
-    if (Dist > DestroySkillRange)
+    if (Dist > DestroySkillRange
+        || bEliminated
+        || IsActionBlockedByGamePhase()
+        || !HasLineOfSightToProp(Target))
     {
         OnRep_DestroySkillState();
         ForceNetUpdate();
@@ -895,6 +961,11 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
     }
 
     if (bSeekerAttackOnCooldown)
+    {
+        return;
+    }
+
+    if (IsActionBlockedByGamePhase())
     {
         return;
     }

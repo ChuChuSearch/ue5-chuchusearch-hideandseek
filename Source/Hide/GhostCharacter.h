@@ -59,6 +59,7 @@ protected:
     void DestroyPreview();
 
     bool IsPlacementValid_Local(const FVector& Location, const FRotator& Rotation) const;
+    bool IsPlacementSpotClear(const UStaticMesh* PropMesh, const FVector& Scale, const FVector& Location, const FRotator& Rotation) const;
     bool IsNearAnyLivePlayer(const FVector& Location, float Radius) const;
     void UpdatePlacementRotation(float DeltaSeconds);
 
@@ -107,6 +108,10 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
     float PlayerBlockRadius = 150.f;
+
+    // 서버 검증: 고스트 위치로부터 이 거리 밖에는 배치 불가 (0 이하 = 제한 없음)
+    UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
+    float MaxPlacementDistance = 5000.f;
 
     UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
     float GroundSnapOffset = 2.f;

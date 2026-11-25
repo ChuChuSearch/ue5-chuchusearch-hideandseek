@@ -76,6 +76,10 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "Attack")
     float SeekerAttackCooldownSeconds = 0.4f; // 연타 방지용
 
+    // 숨는 시간(HideTime) 동안 술래의 공격/파괴 스킬을 서버에서 막는다.
+    UPROPERTY(EditDefaultsOnly, Category = "Attack")
+    bool bBlockSeekerActionsDuringHideTime = true;
+
     // ===== Elimination (minimal) =====
     UFUNCTION(BlueprintCallable)
     bool IsEliminated() const { return bEliminated; }
@@ -111,6 +115,13 @@ private:
 
     UFUNCTION(Server, Unreliable)
     void ServerRotateLocked(float Dir);
+
+    // 서버 회전량을 실제 경과 시간으로 제한하기 위한 마지막 처리 시각(복제 안 함).
+    double LastServerRotateTime = -1.0;
+
+    // 서버 검증 헬퍼
+    bool IsActionBlockedByGamePhase() const;
+    bool HasLineOfSightToProp(const APropBase* Prop) const;
 
     UFUNCTION()
     void OnRep_PossessedProp();

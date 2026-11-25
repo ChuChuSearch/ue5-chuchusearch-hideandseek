@@ -259,12 +259,19 @@ bool AGhostCharacter::IsPlacementValid_Local(const FVector& Location, const FRot
 {
     if (!SelectedPropClass || !SelectedPreviewMesh) return false;
 
+    return IsPlacementSpotClear(SelectedPreviewMesh, SelectedPreviewScale, Location, Rotation);
+}
+
+bool AGhostCharacter::IsPlacementSpotClear(const UStaticMesh* PropMesh, const FVector& Scale, const FVector& Location, const FRotator& Rotation) const
+{
+    if (!PropMesh || !GetWorld()) return false;
+
     if (IsNearAnyLivePlayer(Location, PlayerBlockRadius))
     {
         return false;
     }
 
-    FVector Extent = SelectedPreviewMesh->GetBounds().BoxExtent * SelectedPreviewScale.GetAbs();
+    FVector Extent = PropMesh->GetBounds().BoxExtent * Scale.GetAbs();
     Extent *= 0.95f;
 
     FCollisionShape Shape = FCollisionShape::MakeBox(Extent);
@@ -456,10 +463,52 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
         return;
     }
 
-    // 근처 플레이어 금지
-    if (IsNearAnyLivePlayer(Location, PlayerBlockRadius))
+    if (GS->GetGamePhase() == EGamePhase::Ended)
     {
         return;
+    }
+
+    // 클라이언트 값 검증: 비정상 좌표 거부, 회전은 Yaw만 허용
+    if (Location.ContainsNaN() || Rotation.ContainsNaN())
+    {
+        return;
+    }
+
+    const FRotator SafeRotation(0.f, FRotator::ClampAxis(Rotation.Yaw), 0.f);
+
+    // 고스트 위치에서 너무 먼 곳(맵 밖 등)에는 배치 불가
+    if (MaxPlacementDistance > 0.f
+        && FVector::DistSquared(GetActorLocation(), Location) > FMath::Square(MaxPlacementDistance))
+    {
+        return;
+    }
+
+    // 벽/오브젝트 겹침 + 근처 플레이어 검사를 서버에서도 동일하게 수행
+    {
+        const FRespawnPropInfo& Candidate = GS->GetRespawnList()[RespawnIndex];
+        const UStaticMesh* CandidateMesh = nullptr;
+        if (Candidate.PropClass)
+        {
+            if (const APropBase* DefaultProp = Cast<APropBase>(Candidate.PropClass->GetDefaultObject()))
+            {
+                if (DefaultProp->GetStaticMesh())
+                {
+                    CandidateMesh = DefaultProp->GetStaticMesh()->GetStaticMesh();
+                }
+            }
+        }
+
+        if (CandidateMesh)
+        {
+            if (!IsPlacementSpotClear(CandidateMesh, Candidate.Transform.GetScale3D(), Location, SafeRotation))
+            {
+                return;
+            }
+        }
+        else if (IsNearAnyLivePlayer(Location, PlayerBlockRadius))
+        {
+            return;
+        }
     }
 
     FRespawnPropInfo Info;
@@ -500,7 +549,7 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
     Params.SpawnCollisionHandlingOverride =
         ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
 
-    FTransform SpawnTransform(Rotation, Location, FVector::OneVector);
+    FTransform SpawnTransform(SafeRotation, Location, FVector::OneVector);
 
     AActor* Spawned = GetWorld()->SpawnActor<AActor>(
         Info.PropClass,

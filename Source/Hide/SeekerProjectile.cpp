@@ -56,9 +56,24 @@ void ASeekerProjectile::BeginPlay()
     if (APawn* Inst = GetInstigator())
     {
         Collision->IgnoreActorWhenMoving(Inst, true);
+
+        // 반대 방향도 무시: 쏜 캐릭터가 앞으로 걸어가며 자기 투사체에 막히지 않게 한다.
+        // (클라에서는 이동 예측 때문에 캐릭터가 복제된 투사체보다 앞서 있어 특히 잘 걸림)
+        // BeginPlay는 서버와 각 클라 모두에서 실행되므로 양쪽 이동 판정이 같아진다.
+        Inst->MoveIgnoreActorAdd(this);
     }
 
     SetLifeSpan(LifeSeconds);
+}
+
+void ASeekerProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (APawn* Inst = GetInstigator())
+    {
+        Inst->MoveIgnoreActorRemove(this);
+    }
+
+    Super::EndPlay(EndPlayReason);
 }
 
 void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,

@@ -878,10 +878,20 @@ AGhostCharacter* AMyPlayerController::GetGhostCharacter() const
 
 void AMyPlayerController::OnGhostPlacementRefreshPressed(const FInputActionValue& Value)
 {
-    AGhostCharacter* Ghost = GetGhostCharacter();
-    if (!Ghost) return;
+    // 같은 R키: 유령이면 리스폰 목록 새로고침, 프롭 빙의 중이면 프롭 각도 초기화
+    if (AGhostCharacter* Ghost = GetGhostCharacter())
+    {
+        Ghost->TryRefreshRespawnList();
+        return;
+    }
 
-    Ghost->TryRefreshRespawnList();
+    if (AMyCharacter* MC = GetMyCharacter())
+    {
+        if (MC->IsPossessing())
+        {
+            MC->RequestResetPropRotation();
+        }
+    }
 }
 
 void AMyPlayerController::UI_SelectGhostRespawnIndex(int32 InIndex)

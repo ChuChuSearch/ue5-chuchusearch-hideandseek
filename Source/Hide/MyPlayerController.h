@@ -42,7 +42,7 @@ public:
     void UpdateGameRoomHearts(int32 InHitCount);
 
     UFUNCTION(BlueprintCallable)
-    void UpdateGameRoomClues(const TArray<int32>& InCollectedClueNumbers);
+    void UpdateGameRoomClues(const TArray<int32>& InPositionedClueNumbers);
 
     UFUNCTION(BlueprintCallable)
     void UpdateGhostUI();
@@ -117,6 +117,12 @@ private:
 
     UFUNCTION(Server, Reliable)
     void ServerSubmitPasswordCode(const TArray<int32>& InputCode);
+
+    bool CanSubmitPasswordCode_Server(const AMyGameState* GS) const;
+
+    // 서버측 문 거리 검사에 더하는 여유 거리(네트워크 지연 보정).
+    UPROPERTY(EditDefaultsOnly, Category = "Password")
+    float PasswordSubmitDistanceTolerance = 100.f;
 
     UFUNCTION(Client, Reliable)
     void ClientReceivePasswordAttemptResult(int32 CorrectCount, bool bSuccess, double CooldownRemaining);

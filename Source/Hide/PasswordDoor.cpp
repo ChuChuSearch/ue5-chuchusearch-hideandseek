@@ -61,7 +61,7 @@ void APasswordDoor::ApplyBillboardSettings()
     }
 }
 
-bool APasswordDoor::CanInteractFrom(const AActor* Interactor) const
+bool APasswordDoor::CanInteractFrom(const AActor* Interactor, float ExtraTolerance) const
 {
     if (!Interactor)
     {
@@ -69,5 +69,5 @@ bool APasswordDoor::CanInteractFrom(const AActor* Interactor) const
     }
 
     return FVector::DistSquared(GetActorLocation(), Interactor->GetActorLocation())
-        <= FMath::Square(InteractionDistance);
+        <= FMath::Square(InteractionDistance + FMath::Max(0.f, ExtraTolerance));
 }

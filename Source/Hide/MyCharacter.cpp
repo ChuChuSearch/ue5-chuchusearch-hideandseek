@@ -560,7 +560,7 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
 
 void AMyCharacter::ServerRequestPossess_Implementation()
 {
-    if (bIsSeeker) return;
+    if (bIsSeeker || bEliminated) return;
 
     FVector Start = GetActorLocation();
     FVector End = Start + GetActorForwardVector() * MaxPossessDistance;
@@ -580,6 +580,8 @@ void AMyCharacter::ServerRequestPossess_Implementation()
 
 void AMyCharacter::ServerTryPossess_Implementation(APropBase* Prop)
 {
+    // 클라이언트가 이 RPC를 직접 호출할 수 있으므로 역할/상태를 서버에서 다시 검사한다.
+    if (bIsSeeker || bEliminated) return;
     if (!IsValid(Prop)) return;
     if (Prop->IsPossessionBanned()) return;
 
@@ -630,7 +632,7 @@ void AMyCharacter::ServerTryPossess_Implementation(APropBase* Prop)
 
 void AMyCharacter::ServerTryPossessByPropId_Implementation(FName PropId)
 {
-    if (PropId.IsNone() || !GetWorld())
+    if (bIsSeeker || bEliminated || PropId.IsNone() || !GetWorld())
     {
         return;
     }

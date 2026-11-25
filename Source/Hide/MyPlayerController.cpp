@@ -917,14 +917,19 @@ void AMyPlayerController::UpdateGameRoomHearts(int32 InHitCount)
     }
 }
 
-void AMyPlayerController::UpdateGameRoomClues(const TArray<int32>& InCollectedClueNumbers)
+void AMyPlayerController::UpdateGameRoomClues(const TArray<int32>& InPositionedClueNumbers)
 {
     if (!GameRoomWidgetInstance) return;
 
-    TArray<int32> PositionedClues = InCollectedClueNumbers;
+    // 자리 배치는 서버가 계산해 PlayerState로 보내준다(클라이언트는 정답 순서를 모름).
+    // 아직 수집한 단서가 없으면 빈 칸(INDEX_NONE)으로 채워 위젯이 항상 같은 길이를 받게 한다.
+    TArray<int32> PositionedClues = InPositionedClueNumbers;
     if (const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
     {
-        GS->BuildPositionedClueNumbers(InCollectedClueNumbers, PositionedClues);
+        while (PositionedClues.Num() < GS->GetPasswordCodeLength())
+        {
+            PositionedClues.Add(INDEX_NONE);
+        }
     }
 
     static const FName FuncName(TEXT("UpdateClues"));
@@ -972,10 +977,51 @@ void AMyPlayerController::ServerSubmitPasswordCode_Implementation(const TArray<i
         return;
     }
 
+    if (!CanSubmitPasswordCode_Server(GS))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Rejected password submit from %s: not eligible (pawn/phase/distance)."), *GetNameSafe(this));
+        ClientReceivePasswordAttemptResult(0, false, 0.0);
+        return;
+    }
+
     int32 CorrectCount = 0;
     double CooldownRemaining = 0.0;
     const bool bSuccess = GS->SubmitPasswordCode(this, InputCode, CorrectCount, CooldownRemaining);
     ClientReceivePasswordAttemptResult(CorrectCount, bSuccess, CooldownRemaining);
+}
+
+bool AMyPlayerController::CanSubmitPasswordCode_Server(const AMyGameState* GS) const
+{
+    if (!HasAuthority() || !GS || !GetWorld())
+    {
+        return false;
+    }
+
+    if (GS->GetGamePhase() == EGamePhase::Ended)
+    {
+        return false;
+    }
+
+    // 유령(AGhostCharacter)이나 탈락자는 제출 불가.
+    const AMyCharacter* MC = GetMyCharacter();
+    if (!MC || MC->IsEliminated())
+    {
+        return false;
+    }
+
+    // 문 근처인지 서버에서 다시 확인(클라이언트 판정만 믿지 않음). 지연 보정으로 약간의 여유를 둔다.
+    TArray<AActor*> PasswordDoors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), APasswordDoor::StaticClass(), PasswordDoors);
+    for (const AActor* Actor : PasswordDoors)
+    {
+        const APasswordDoor* Door = Cast<APasswordDoor>(Actor);
+        if (Door && Door->CanInteractFrom(MC, PasswordSubmitDistanceTolerance))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void AMyPlayerController::ClientReceivePasswordAttemptResult_Implementation(int32 CorrectCount, bool bSuccess, double CooldownRemaining)
@@ -1087,7 +1133,7 @@ void AMyPlayerController::RefreshGameRoomCluesFromPlayerState()
         return;
     }
 
-    UpdateGameRoomClues(MyPS->GetCollectedClueNumbers());
+    UpdateGameRoomClues(MyPS->GetPositionedClueNumbers());
 }
 
 void AMyPlayerController::OnRep_Pawn()

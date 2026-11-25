@@ -198,8 +198,6 @@ void AMyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     DOREPLIFETIME(AMyGameState, RespawnList);
     DOREPLIFETIME(AMyGameState, VisibleRespawnList);
     DOREPLIFETIME(AMyGameState, VisibleRespawnIndices);
-    DOREPLIFETIME(AMyGameState, CluePropIds);
-    DOREPLIFETIME(AMyGameState, ClueNumbers);
     DOREPLIFETIME(AMyGameState, RunnerCodeFailureCount);
     DOREPLIFETIME(AMyGameState, RunnerCodeCooldownEndServerTime);
     DOREPLIFETIME(AMyGameState, SeekerCodeFailureCount);

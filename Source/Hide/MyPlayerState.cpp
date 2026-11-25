@@ -1,5 +1,6 @@
 #include "MyPlayerState.h"
 #include "MyPlayerController.h"
+#include "MyGameState.h"
 #include "Net/UnrealNetwork.h"
 
 AMyPlayerState::AMyPlayerState()
@@ -85,6 +86,7 @@ void AMyPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(AMyPlayerState, bIsHost);
     DOREPLIFETIME(AMyPlayerState, LobbyJoinOrder);
     DOREPLIFETIME(AMyPlayerState, CollectedClueNumbers);
+    DOREPLIFETIME_CONDITION(AMyPlayerState, PositionedClueNumbers, COND_OwnerOnly);
 }
 
 bool AMyPlayerState::HasCollectedClue(int32 InClueNumber) const
@@ -92,7 +94,7 @@ bool AMyPlayerState::HasCollectedClue(int32 InClueNumber) const
     return CollectedClueNumbers.Contains(InClueNumber);
 }
 
-void AMyPlayerState::ServerCollectClue_Implementation(int32 InClueNumber)
+void AMyPlayerState::CollectClue_Server(int32 InClueNumber)
 {
     if (!HasAuthority()) return;
     if (InClueNumber < 0 || InClueNumber > 9) return;
@@ -103,11 +105,22 @@ void AMyPlayerState::ServerCollectClue_Implementation(int32 InClueNumber)
     }
 
     CollectedClueNumbers.Add(InClueNumber);
-    NotifyClueCollectionChanged();
 
+    if (const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
+    {
+        GS->BuildPositionedClueNumbers(CollectedClueNumbers, PositionedClueNumbers);
+    }
+
+    ForceNetUpdate();
+    NotifyClueCollectionChanged();
 }
 
 void AMyPlayerState::OnRep_CollectedClueNumbers()
+{
+    NotifyClueCollectionChanged();
+}
+
+void AMyPlayerState::OnRep_PositionedClueNumbers()
 {
     NotifyClueCollectionChanged();
 }
@@ -120,6 +133,6 @@ void AMyPlayerState::NotifyClueCollectionChanged()
         return;
     }
 
-    MyPC->UpdateGameRoomClues(CollectedClueNumbers);
+    MyPC->UpdateGameRoomClues(PositionedClueNumbers);
 }
 

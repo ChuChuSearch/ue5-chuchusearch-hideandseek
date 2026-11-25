@@ -87,5 +87,5 @@ void ACluePickup::OnOverlapBegin(
     AMyPlayerState* PS = MyChar->GetPlayerState<AMyPlayerState>();
     if (!PS) return;
 
-    PS->ServerCollectClue(ClueNumber);
+    PS->CollectClue_Server(ClueNumber);
 }

@@ -19,7 +19,7 @@ public:
     virtual void OnConstruction(const FTransform& Transform) override;
 
     UFUNCTION(BlueprintCallable)
-    bool CanInteractFrom(const AActor* Interactor) const;
+    bool CanInteractFrom(const AActor* Interactor, float ExtraTolerance = 0.f) const;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Password")
     float InteractionDistance = 250.f;

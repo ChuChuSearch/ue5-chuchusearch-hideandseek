@@ -65,8 +65,12 @@ public:
     UFUNCTION(BlueprintCallable)
     const TArray<int32>& GetCollectedClueNumbers() const { return CollectedClueNumbers; }
 
-    UFUNCTION(Server, Reliable, BlueprintCallable)
-    void ServerCollectClue(int32 InClueNumber);
+    // 서버 전용. 클라이언트 RPC로 열어두면 단서를 줍지 않고도 수집 처리할 수 있으므로
+    // ACluePickup의 서버측 겹침 판정에서만 호출한다.
+    void CollectClue_Server(int32 InClueNumber);
+
+    // 자리(순서)가 반영된 단서 목록. 서버가 계산해 소유자에게만 복제한다.
+    const TArray<int32>& GetPositionedClueNumbers() const { return PositionedClueNumbers; }
 
 protected:
     UPROPERTY(Replicated)
@@ -91,6 +95,12 @@ protected:
 
     UFUNCTION()
     void OnRep_CollectedClueNumbers();
+
+    UPROPERTY(ReplicatedUsing = OnRep_PositionedClueNumbers)
+    TArray<int32> PositionedClueNumbers;
+
+    UFUNCTION()
+    void OnRep_PositionedClueNumbers();
 
     void NotifyClueCollectionChanged();
 };

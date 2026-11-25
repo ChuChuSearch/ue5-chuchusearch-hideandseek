@@ -107,7 +107,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Team Status")
     void GetActiveTeamCounts(int32& OutSeekerCount, int32& OutRunnerCount) const;
 
+    // 서버 전용(ClueNumbers는 클라이언트에 복제되지 않음).
     void BuildPositionedClueNumbers(const TArray<int32>& CollectedClueNumbers, TArray<int32>& OutPositionedClues) const;
+    int32 GetPasswordCodeLength() const { return PasswordCodeLength; }
     void SetGameResult_Server(EFinalRole WinningRole);
 
 protected:
@@ -120,10 +122,12 @@ protected:
     UPROPERTY(Replicated)
     TArray<int32> VisibleRespawnIndices;
 
-    UPROPERTY(Replicated, BlueprintReadOnly)
+    // 정답 데이터는 서버 전용. 복제하면 클라이언트가 비밀번호를 그대로 읽을 수 있음.
+    // 클라이언트 UI는 AMyPlayerState::PositionedClueNumbers(소유자 전용 복제)를 사용.
+    UPROPERTY()
     TArray<FName> CluePropIds;
 
-    UPROPERTY(Replicated, BlueprintReadOnly)
+    UPROPERTY()
     TArray<int32> ClueNumbers;
 
     UPROPERTY(EditDefaultsOnly, Category = "Clue")

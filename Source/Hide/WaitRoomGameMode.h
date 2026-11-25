@@ -23,6 +23,9 @@ public:
     UFUNCTION(BlueprintCallable)
     void StartGame(APlayerController* RequestPC);
 
+    // 시작 조건(방장, 인원 수 등)을 통과해 실제로 이동을 시작했으면 true.
+    bool TryStartGame(APlayerController* RequestPC);
+
 protected:
     UPROPERTY(EditDefaultsOnly, Category = "Travel")
     TSoftObjectPtr<UWorld> GameMapAsset;

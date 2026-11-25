@@ -1,6 +1,7 @@
 #include "MyPlayerState.h"
 #include "MyPlayerController.h"
 #include "MyGameState.h"
+#include "WaitRoomGameMode.h"
 #include "Net/UnrealNetwork.h"
 
 AMyPlayerState::AMyPlayerState()
@@ -8,21 +9,59 @@ AMyPlayerState::AMyPlayerState()
     bReplicates = true;
 }
 
+bool AMyPlayerState::IsInWaitRoom_Server() const
+{
+    const UWorld* World = GetWorld();
+    return World && World->GetAuthGameMode<AWaitRoomGameMode>() != nullptr;
+}
+
 void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
 {
     if (!HasAuthority()) return;
 
-    FString Trimmed = InNickname;
-    Trimmed.TrimStartAndEndInline();
+    // 게임 도중 닉네임 변경(다른 사람 사칭 등) 방지: 대기실에서만 허용
+    if (!IsInWaitRoom_Server()) return;
 
-    Nickname = Trimmed.Left(16);
+    // 제어 문자(개행, 탭, 널 등) 제거 후 공백 정리
+    FString Sanitized;
+    Sanitized.Reserve(InNickname.Len());
+    for (const TCHAR Ch : InNickname)
+    {
+        if (!FChar::IsControl(Ch))
+        {
+            Sanitized.AppendChar(Ch);
+        }
+    }
+
+    Sanitized.TrimStartAndEndInline();
+    Sanitized = Sanitized.Left(16);
+
+    if (Sanitized.IsEmpty())
+    {
+        return;
+    }
+
+    Nickname = Sanitized;
+    ForceNetUpdate();
 }
 
 void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPreference)
 {
     if (!HasAuthority()) return;
+    if (!IsInWaitRoom_Server()) return;
 
-    Preference = InPreference;
+    switch (InPreference)
+    {
+    case ERolePreference::SeekerWish:
+    case ERolePreference::RunnerWish:
+    case ERolePreference::Any:
+        Preference = InPreference;
+        ForceNetUpdate();
+        break;
+    default:
+        // 정의되지 않은 enum 값은 무시
+        break;
+    }
 }
 
 void AMyPlayerState::SetHost_Server(bool bNewHost)

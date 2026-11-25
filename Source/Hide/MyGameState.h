@@ -113,13 +113,20 @@ public:
     void SetGameResult_Server(EFinalRole WinningRole);
 
 protected:
-    UPROPERTY(Replicated, BlueprintReadOnly)
+    // 파괴된 프롭 전체 목록은 서버 전용. 클라이언트에는 VisibleRespawnList와 개수만 보낸다.
+    UPROPERTY()
     TArray<FRespawnPropInfo> RespawnList;
+
+    UPROPERTY(Replicated)
+    int32 RespawnCandidateCount = 0;
+
+    void UpdateRespawnCandidateCount_Server();
 
     UPROPERTY(Replicated, BlueprintReadOnly)
     TArray<FRespawnPropInfo> VisibleRespawnList;
 
-    UPROPERTY(Replicated)
+    // 서버 내부 인덱스(RespawnList 위치). 클라이언트에는 필요 없음.
+    UPROPERTY()
     TArray<int32> VisibleRespawnIndices;
 
     // 정답 데이터는 서버 전용. 복제하면 클라이언트가 비밀번호를 그대로 읽을 수 있음.

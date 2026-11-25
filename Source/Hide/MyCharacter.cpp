@@ -14,6 +14,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
+#include "EngineUtils.h"
 
 AMyCharacter::AMyCharacter()
 {
@@ -442,8 +443,8 @@ void AMyCharacter::ServerRotateLocked_Implementation(float Dir)
     const float YawDelta = Dir * LockedRotateDegPerSec * static_cast<float>(Elapsed);
     if (FMath::IsNearlyZero(YawDelta)) return;
 
+    // 회전은 ReplicatedMovement로 정기 복제되므로 매 호출마다 ForceNetUpdate 하지 않는다(스팸 시 서버 부하 방지).
     AddActorWorldRotation(FRotator(0.f, YawDelta, 0.f));
-    ForceNetUpdate();
 }
 
 bool AMyCharacter::IsActionBlockedByGamePhase() const
@@ -622,6 +623,7 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
 void AMyCharacter::ServerRequestPossess_Implementation()
 {
     if (bIsSeeker || bEliminated) return;
+    if (!ConsumePossessRequestBudget_Server()) return;
 
     FVector Start = GetActorLocation();
     FVector End = Start + GetActorForwardVector() * MaxPossessDistance;
@@ -698,18 +700,39 @@ void AMyCharacter::ServerTryPossessByPropId_Implementation(FName PropId)
         return;
     }
 
-    TArray<AActor*> FoundProps;
-    UGameplayStatics::GetAllActorsOfClass(GetWorld(), APropBase::StaticClass(), FoundProps);
-
-    for (AActor* Actor : FoundProps)
+    // 맵 전체 순회가 들어가므로 요청 빈도를 제한한다.
+    if (!ConsumePossessRequestBudget_Server())
     {
-        APropBase* Prop = Cast<APropBase>(Actor);
+        return;
+    }
+
+    for (TActorIterator<APropBase> It(GetWorld()); It; ++It)
+    {
+        APropBase* Prop = *It;
         if (Prop && Prop->GetPropId() == PropId)
         {
             ServerTryPossess(Prop);
             return;
         }
     }
+}
+
+bool AMyCharacter::ConsumePossessRequestBudget_Server()
+{
+    if (!GetWorld())
+    {
+        return false;
+    }
+
+    const double Now = GetWorld()->GetTimeSeconds();
+    if (LastServerPossessRequestTime >= 0.0
+        && Now - LastServerPossessRequestTime < MinPossessRequestIntervalSeconds)
+    {
+        return false;
+    }
+
+    LastServerPossessRequestTime = Now;
+    return true;
 }
 
 bool AMyCharacter::ForceReplacePossessedProp_Server(TSubclassOf<APropBase> NewPropClass)

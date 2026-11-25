@@ -162,21 +162,26 @@ FString AWaitRoomGameMode::BuildGameTravelURL() const
 
 void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)
 {
-    if (!HasAuthority() || !IsValid(RequestPC) || !GameState) return;
+    TryStartGame(RequestPC);
+}
+
+bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC)
+{
+    if (!HasAuthority() || !IsValid(RequestPC) || !GameState) return false;
 
     AMyPlayerState* RequestPS = RequestPC->GetPlayerState<AMyPlayerState>();
-    if (!RequestPS || !RequestPS->IsHost()) return;
+    if (!RequestPS || !RequestPS->IsHost()) return false;
 
     const int32 PlayerCount = GameState->PlayerArray.Num();
     if (PlayerCount < 2)
     {
-        return;
+        return false;
     }
 
-    if (PlayerCount > 4) return;
+    if (PlayerCount > 4) return false;
 
     AMyPlayerState* SeekerPS = nullptr;
-    if (!PickSeeker(SeekerPS) || !SeekerPS) return;
+    if (!PickSeeker(SeekerPS) || !SeekerPS) return false;
 
     for (APlayerState* PS : GameState->PlayerArray)
     {
@@ -191,6 +196,6 @@ void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)
     }
 
     const FString TravelURL = BuildGameTravelURL();
-    GetWorld()->ServerTravel(TravelURL, false);
+    return GetWorld()->ServerTravel(TravelURL, false);
 }
 

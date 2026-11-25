@@ -116,6 +116,7 @@ void AMyGameState::RegisterDestroyedProp(AActor* DestroyedProp)
     }
 
     RespawnList.Add(Info);
+    UpdateRespawnCandidateCount_Server();
 
     if (VisibleRespawnList.Num() < MaxVisibleRespawnProps)
     {
@@ -142,6 +143,7 @@ bool AMyGameState::ConsumeRespawnEntry(int32 Index, FRespawnPropInfo& OutInfo)
 
     OutInfo = RespawnList[SourceIndex];
     RespawnList.RemoveAt(SourceIndex);
+    UpdateRespawnCandidateCount_Server();
     RefreshVisibleRespawnList();
     ForceNetUpdate();
     return true;
@@ -153,6 +155,7 @@ void AMyGameState::RestoreRespawnEntry(const FRespawnPropInfo& Info)
     if (!Info.PropClass) return;
 
     RespawnList.Add(Info);
+    UpdateRespawnCandidateCount_Server();
     RefreshVisibleRespawnList();
     ForceNetUpdate();
 }
@@ -180,6 +183,12 @@ bool AMyGameState::RequestRefreshVisibleRespawnList()
 
 bool AMyGameState::CanRefreshVisibleRespawnList() const
 {
+    // 클라이언트는 RespawnList를 받지 않으므로 서버가 복제해 준 개수를 사용한다.
+    if (!HasAuthority())
+    {
+        return RespawnCandidateCount > MaxVisibleRespawnProps;
+    }
+
     int32 ValidRespawnCount = 0;
     for (const FRespawnPropInfo& Info : RespawnList)
     {
@@ -192,12 +201,30 @@ bool AMyGameState::CanRefreshVisibleRespawnList() const
     return ValidRespawnCount > MaxVisibleRespawnProps;
 }
 
+void AMyGameState::UpdateRespawnCandidateCount_Server()
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    int32 ValidRespawnCount = 0;
+    for (const FRespawnPropInfo& Info : RespawnList)
+    {
+        if (Info.PropClass)
+        {
+            ++ValidRespawnCount;
+        }
+    }
+
+    RespawnCandidateCount = ValidRespawnCount;
+}
+
 void AMyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-    DOREPLIFETIME(AMyGameState, RespawnList);
+    DOREPLIFETIME(AMyGameState, RespawnCandidateCount);
     DOREPLIFETIME(AMyGameState, VisibleRespawnList);
-    DOREPLIFETIME(AMyGameState, VisibleRespawnIndices);
     DOREPLIFETIME(AMyGameState, RunnerCodeFailureCount);
     DOREPLIFETIME(AMyGameState, RunnerCodeCooldownEndServerTime);
     DOREPLIFETIME(AMyGameState, SeekerCodeFailureCount);

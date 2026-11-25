@@ -480,11 +480,11 @@ void AMyPlayerController::ServerRequestStartGame_Implementation()
 {
     if (!HasAuthority()) return;
 
-    ClientCloseWaitRoomUI();
-
-    if (AWaitRoomGameMode* GM = GetWorld()->GetAuthGameMode<AWaitRoomGameMode>())
+    // 방장이 아니거나 인원이 맞지 않으면 시작되지 않으므로, 실제로 시작될 때만 UI를 닫는다.
+    AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr;
+    if (GM && GM->TryStartGame(this))
     {
-        GM->StartGame(this);
+        ClientCloseWaitRoomUI();
     }
 }
 

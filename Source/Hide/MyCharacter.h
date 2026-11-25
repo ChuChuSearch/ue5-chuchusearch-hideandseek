@@ -119,6 +119,13 @@ private:
     // 서버 회전량을 실제 경과 시간으로 제한하기 위한 마지막 처리 시각(복제 안 함).
     double LastServerRotateTime = -1.0;
 
+    // 빙의 요청 스팸 방지(서버 전용)
+    double LastServerPossessRequestTime = -1.0;
+    bool ConsumePossessRequestBudget_Server();
+
+    UPROPERTY(EditDefaultsOnly, Category = "Possess")
+    float MinPossessRequestIntervalSeconds = 0.2f;
+
     // 서버 검증 헬퍼
     bool IsActionBlockedByGamePhase() const;
     bool HasLineOfSightToProp(const APropBase* Prop) const;

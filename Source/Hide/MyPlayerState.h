@@ -49,6 +49,8 @@ public:
     UFUNCTION(BlueprintCallable, Server, Reliable)
     void ServerSetPreference(ERolePreference InPreference);
 
+    bool IsInWaitRoom_Server() const;
+
     void SetHost_Server(bool bNewHost);
     void SetLobbyJoinOrder_Server(int32 NewJoinOrder);
     void SetFinalRole_Server(EFinalRole InRole);

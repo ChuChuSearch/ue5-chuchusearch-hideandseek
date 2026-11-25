@@ -382,6 +382,8 @@ void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
         Old->MulticastFinalizeReleaseTransform(PropLocation, PropRotation);
         Old->SetPossessedNet(false);
         Old->ReleaseClaim(this);
+        // 공중(점프 중 등)에서 해제했으면 바닥까지 떨어뜨린다.
+        Old->StartDropToGround_Server();
         Old->ForceNetUpdate();
     }
 

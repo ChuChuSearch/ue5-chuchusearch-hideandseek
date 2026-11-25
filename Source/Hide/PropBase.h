@@ -38,6 +38,10 @@ public:
     UStaticMeshComponent* GetStaticMesh() const { return StaticMesh; }
     float GetBottomOffsetFromActorLocation() const;
 
+    // 공중에서 빙의 해제되면 바닥까지 수직으로 떨어뜨린다(서버 전용, 물리 미사용).
+    // 위치는 기존 ReplicatedMovement로 클라에 전달된다.
+    void StartDropToGround_Server();
+
     UFUNCTION(BlueprintCallable)
     FName GetPropId() const { return PropId; }
 
@@ -59,4 +63,26 @@ protected:
 
     UPROPERTY(Replicated)
     FName PropId;
+
+    // 바닥에서 이 거리(cm) 이상 떠 있을 때만 떨어뜨린다.
+    UPROPERTY(EditDefaultsOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+    float AirborneCheckDistance = 5.f;
+
+    // 낙하 가속도(cm/s^2)
+    UPROPERTY(EditDefaultsOnly, Category = "Fall", meta = (ClampMin = "1.0"))
+    float DropGravity = 1960.f;
+
+    // 이보다 멀리 떨어지면 멈춘다(맵 밖으로 무한히 떨어지는 것 방지).
+    UPROPERTY(EditDefaultsOnly, Category = "Fall", meta = (ClampMin = "0.0"))
+    float MaxDropDistance = 5000.f;
+
+private:
+    // 아래로 Distance만큼 프롭 바닥면을 쓸어 보고, 막히면 true와 실제 이동 가능 거리를 돌려준다.
+    bool SweepDown_Server(float Distance, float& OutMoveDistance) const;
+    void TickDrop_Server();
+    void StopDrop_Server();
+
+    FTimerHandle TH_Drop;
+    float DropVelocity = 0.f;
+    float DroppedDistance = 0.f;
 };

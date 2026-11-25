@@ -29,6 +29,9 @@ public:
     void ToggleLocked();
     void RequestRotateLocked(float Dir);
 
+    // 빙의 중인 프롭이 기울어져 있으면 Yaw만 남기고 똑바로 세운다(R키).
+    void RequestResetPropRotation();
+
     bool IsPossessing() const { return PossessedProp != nullptr; }
     APropBase* GetPossessedProp() const { return PossessedProp; }
     bool IsLocked() const { return bLocked; }
@@ -116,6 +119,9 @@ private:
 
     UFUNCTION(Server, Unreliable)
     void ServerRotateLocked(float Dir);
+
+    UFUNCTION(Server, Reliable)
+    void ServerResetPropRotation();
 
     // 서버 회전량을 실제 경과 시간으로 제한하기 위한 마지막 처리 시각(복제 안 함).
     double LastServerRotateTime = -1.0;

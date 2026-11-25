@@ -134,6 +134,29 @@ void AMyCharacter::RequestRotateLocked(float Dir)
     ServerRotateLocked(Dir);
 }
 
+void AMyCharacter::RequestResetPropRotation()
+{
+    if (!PossessedProp) return;
+
+    ServerResetPropRotation();
+}
+
+void AMyCharacter::ServerResetPropRotation_Implementation()
+{
+    if (!PossessedProp || bEliminated) return;
+    if (PossessedProp->GetAttachParentActor() != this) return;
+
+    const FRotator Current = PossessedProp->GetActorRotation();
+    const FRotator Upright(0.f, Current.Yaw, 0.f);
+    if (Upright.Equals(Current, 0.5f)) return;
+
+    // 서버에서만 회전/높이를 바꾸고, 클라에는 기존 부착(Attachment) 복제로 전달된다.
+    // 캡슐 크기는 건드리지 않는다(Q/E 회전과 동일하게 빙의 시점 크기 유지).
+    PossessedProp->SetActorRotation(Upright, ETeleportType::TeleportPhysics);
+    PossessedProp->SetActorLocation(PropWorldLocationForCharacter(PossessedProp));
+    PossessedProp->ForceNetUpdate();
+}
+
 
 float AMyCharacter::GetCapsuleHalfHeight() const
 {

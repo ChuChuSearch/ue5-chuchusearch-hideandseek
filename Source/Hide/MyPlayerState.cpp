@@ -64,6 +64,33 @@ void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPrefer
     }
 }
 
+void AMyPlayerState::ExportReconnectData(FReconnectPlayerData& OutData) const
+{
+    OutData.Nickname = Nickname;
+    OutData.Preference = Preference;
+    OutData.FinalRole = FinalRole;
+    OutData.bIsHost = bIsHost;
+    OutData.LobbyJoinOrder = LobbyJoinOrder;
+    OutData.CollectedClueNumbers = CollectedClueNumbers;
+    OutData.PositionedClueNumbers = PositionedClueNumbers;
+}
+
+void AMyPlayerState::ImportReconnectData_Server(const FReconnectPlayerData& InData)
+{
+    if (!HasAuthority()) return;
+
+    Nickname = InData.Nickname;
+    Preference = InData.Preference;
+    FinalRole = InData.FinalRole;
+    bIsHost = InData.bIsHost;
+    LobbyJoinOrder = InData.LobbyJoinOrder;
+    CollectedClueNumbers = InData.CollectedClueNumbers;
+    PositionedClueNumbers = InData.PositionedClueNumbers;
+
+    ForceNetUpdate();
+    NotifyClueCollectionChanged();
+}
+
 void AMyPlayerState::SetHost_Server(bool bNewHost)
 {
     if (!HasAuthority()) return;

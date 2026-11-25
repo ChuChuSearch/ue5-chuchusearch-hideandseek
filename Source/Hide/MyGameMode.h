@@ -22,7 +22,11 @@ public:
 
     virtual void BeginPlay() override;
     virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
+    virtual void PostLogin(APlayerController* NewPlayer) override;
     virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
+
+    // 접속이 끊겨도 캐릭터를 월드에 남겨 재접속 시 이어서 조종하게 할지
+    bool ShouldKeepPawnOnDisconnect() const { return bAllowReconnect && !bGameEnded; }
     virtual void Logout(AController* Exiting) override;
 
     void SpawnPlayerAsRole(APlayerController* PC, bool bSeeker);
@@ -57,6 +61,30 @@ protected:
     bool bRejectJoinInProgress = true;
 
     bool IsPlayInEditorWorld() const;
+
+    // ===== 재접속 =====
+    // 게임 도중 끊긴 플레이어가 같은 PC(같은 온라인 ID)로 다시 들어오면 역할/단서/캐릭터를 복원한다.
+    UPROPERTY(EditDefaultsOnly, Category = "Reconnect")
+    bool bAllowReconnect = true;
+
+    // 한 팀이 전원 끊겼을 때 바로 승패를 내지 않고 재접속을 기다리는 시간(초). 0이면 즉시 판정.
+    UPROPERTY(EditDefaultsOnly, Category = "Reconnect", meta = (ClampMin = "0.0"))
+    float ReconnectGraceSeconds = 60.f;
+
+    struct FDisconnectedPlayerRecord
+    {
+        FReconnectPlayerData Data;
+        TWeakObjectPtr<APawn> Pawn;
+    };
+
+    TMap<FString, FDisconnectedPlayerRecord> DisconnectedPlayers;
+    FTimerHandle TH_ReconnectGrace;
+
+    static FString MakeReconnectKey(const FUniqueNetIdRepl& UniqueId, const FString& Address);
+    FString GetReconnectKey(const APlayerController* PC) const;
+    bool IsDisconnectedPlayerPawn(const APawn* Pawn) const;
+    bool TryRestoreReconnectingPlayer(APlayerController* PC);
+    void OnReconnectGraceExpired();
 
     UPROPERTY(BlueprintReadOnly, Category = "Victory")
     bool bGameEnded = false;
@@ -109,7 +137,7 @@ protected:
     void ResolveForcedSwapProps();
     void ClearPhase1PropBans();
     bool HasAnyActiveRunner() const;
-    void EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState);
+    void EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState, bool bAllowGrace = true);
 
     FTimerHandle TH_GamePhase;
     FTimerHandle TH_ReturnToWaitRoom;

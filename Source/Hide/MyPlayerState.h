@@ -20,6 +20,18 @@ enum class EFinalRole : uint8
     Runner UMETA(DisplayName = "Runner"),
 };
 
+// 게임 도중 접속이 끊긴 플레이어를 재접속 시 복원하기 위한 데이터(서버 전용)
+struct FReconnectPlayerData
+{
+    FString Nickname;
+    ERolePreference Preference = ERolePreference::Any;
+    EFinalRole FinalRole = EFinalRole::None;
+    bool bIsHost = false;
+    int32 LobbyJoinOrder = 0;
+    TArray<int32> CollectedClueNumbers;
+    TArray<int32> PositionedClueNumbers;
+};
+
 UCLASS()
 class HIDE_API AMyPlayerState : public APlayerState
 {
@@ -50,6 +62,9 @@ public:
     void ServerSetPreference(ERolePreference InPreference);
 
     bool IsInWaitRoom_Server() const;
+
+    void ExportReconnectData(FReconnectPlayerData& OutData) const;
+    void ImportReconnectData_Server(const FReconnectPlayerData& InData);
 
     void SetHost_Server(bool bNewHost);
     void SetLobbyJoinOrder_Server(int32 NewJoinOrder);

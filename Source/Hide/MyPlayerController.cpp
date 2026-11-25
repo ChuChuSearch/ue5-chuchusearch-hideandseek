@@ -1146,6 +1146,31 @@ void AMyPlayerController::OnRep_Pawn()
     }
 }
 
+void AMyPlayerController::PawnLeavingGame()
+{
+    AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr;
+    if (GM && GM->ShouldKeepPawnOnDisconnect() && GetPawn())
+    {
+        // 기본 동작(캐릭터 파괴) 대신 조종만 해제하고 캐릭터는 월드에 남긴다.
+        UnPossess();
+        return;
+    }
+
+    Super::PawnLeavingGame();
+}
+
+void AMyPlayerController::ClientRestoreAfterReconnect_Implementation(int32 SeekerHitCount)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    ShowGameRoomUI();
+    UpdateGameRoomHearts(SeekerHitCount);
+    RefreshGameRoomCluesFromPlayerState();
+}
+
 void AMyPlayerController::ClientFinalizeGhostTransition_Implementation()
 {
     APawn* CurrentPawn = GetPawn();

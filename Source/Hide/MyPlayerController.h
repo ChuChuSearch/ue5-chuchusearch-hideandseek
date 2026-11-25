@@ -64,8 +64,15 @@ public:
 
     virtual void OnRep_Pawn() override;
 
+    // 경기 중 접속이 끊기면 캐릭터를 파괴하지 않고 남겨 재접속 시 이어서 조종하게 한다.
+    virtual void PawnLeavingGame() override;
+
     UFUNCTION(Client, Reliable)
     void ClientFinalizeGhostTransition();
+
+    // 재접속 직후 게임 UI(하트/단서)를 현재 상태로 다시 그린다.
+    UFUNCTION(Client, Reliable)
+    void ClientRestoreAfterReconnect(int32 SeekerHitCount);
 
     UFUNCTION(Client, Reliable)
     void ClientSetForcedSwapWarning(bool bShowWarning, double RemainingSeconds);

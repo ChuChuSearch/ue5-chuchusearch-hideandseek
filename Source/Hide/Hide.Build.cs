@@ -12,6 +12,7 @@ public class Hide : ModuleRules
         {
             "Core",
             "CoreUObject",
+            "CoreOnline", // 재접속 식별용 FUniqueNetIdRepl
             "Engine",
             "InputCore",
             "EnhancedInput",

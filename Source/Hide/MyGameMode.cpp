@@ -7,6 +7,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerController.h"
+#include "Engine/NetConnection.h"
 
 #include "MyPlayerState.h"
 
@@ -44,11 +45,141 @@ void AMyGameMode::PreLogin(const FString& Options, const FString& Address, const
 
     // seamless travel로 넘어온 플레이어는 PreLogin을 거치지 않으므로,
     // 여기 들어오는 건 게임 도중 새로 접속하려는 경우다.
-    if (bRejectJoinInProgress && !IsPlayInEditorWorld())
+    if (!bRejectJoinInProgress || IsPlayInEditorWorld())
     {
-        ErrorMessage = TEXT("Match in progress");
-        UE_LOG(LogTemp, Log, TEXT("Rejected join-in-progress login from %s."), *Address);
+        return;
     }
+
+    // 이번 경기 참가자가 끊겼다가 다시 들어오는 경우는 허용
+    if (bAllowReconnect && !bGameEnded && DisconnectedPlayers.Contains(MakeReconnectKey(UniqueId, Address)))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Accepting reconnect login from %s."), *Address);
+        return;
+    }
+
+    ErrorMessage = TEXT("Match in progress");
+    UE_LOG(LogTemp, Log, TEXT("Rejected join-in-progress login from %s."), *Address);
+}
+
+void AMyGameMode::PostLogin(APlayerController* NewPlayer)
+{
+    // Super 안에서 HandleStartingNewPlayer가 호출되는데, 재접속자는 거기서 새 캐릭터를 만들지 않는다.
+    Super::PostLogin(NewPlayer);
+
+    TryRestoreReconnectingPlayer(NewPlayer);
+}
+
+FString AMyGameMode::MakeReconnectKey(const FUniqueNetIdRepl& UniqueId, const FString& Address)
+{
+    // 온라인 ID 우선(Null 서브시스템: PC별 고정 ID, Steam: SteamID). 없으면 IP로 대체.
+    if (UniqueId.IsValid())
+    {
+        return FString::Printf(TEXT("ID:%s"), *UniqueId.ToString());
+    }
+
+    return FString::Printf(TEXT("IP:%s"), *Address);
+}
+
+FString AMyGameMode::GetReconnectKey(const APlayerController* PC) const
+{
+    if (!PC)
+    {
+        return FString();
+    }
+
+    const APlayerState* PS = PC->GetPlayerState<APlayerState>();
+    const FUniqueNetIdRepl UniqueId = PS ? PS->GetUniqueId() : FUniqueNetIdRepl();
+
+    FString Address;
+    if (UNetConnection* Conn = PC->GetNetConnection())
+    {
+        Address = Conn->LowLevelGetRemoteAddress(false);
+    }
+
+    return MakeReconnectKey(UniqueId, Address);
+}
+
+bool AMyGameMode::IsDisconnectedPlayerPawn(const APawn* Pawn) const
+{
+    if (!Pawn)
+    {
+        return false;
+    }
+
+    for (const TPair<FString, FDisconnectedPlayerRecord>& Pair : DisconnectedPlayers)
+    {
+        if (Pair.Value.Pawn.Get() == Pawn)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool AMyGameMode::TryRestoreReconnectingPlayer(APlayerController* PC)
+{
+    if (!HasAuthority() || !IsValid(PC) || !bAllowReconnect || bGameEnded)
+    {
+        return false;
+    }
+
+    FDisconnectedPlayerRecord Record;
+    if (!DisconnectedPlayers.RemoveAndCopyValue(GetReconnectKey(PC), Record))
+    {
+        return false;
+    }
+
+    AMyPlayerState* PS = PC->GetPlayerState<AMyPlayerState>();
+    if (!PS)
+    {
+        return false;
+    }
+
+    PS->ImportReconnectData_Server(Record.Data);
+    const bool bSeeker = Record.Data.FinalRole == EFinalRole::Seeker;
+
+    UE_LOG(LogTemp, Log, TEXT("Player reconnected: %s (role=%d)"), *PS->GetNickname(), static_cast<int32>(Record.Data.FinalRole));
+
+    APawn* SavedPawn = Record.Pawn.Get();
+    if (IsValid(SavedPawn) && !SavedPawn->GetController())
+    {
+        PC->Possess(SavedPawn);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Reconnect: saved pawn missing, spawning new one for %s."), *PS->GetNickname());
+        SpawnPlayerAsRole(PC, bSeeker);
+    }
+
+    // 끊긴 사이에 탈락한 러너는 다시 들어오면 유령으로 전환
+    if (AMyCharacter* MC = Cast<AMyCharacter>(PC->GetPawn()))
+    {
+        if (MC->IsEliminated() && !MC->IsSeeker())
+        {
+            HandleRunnerEliminated(MC);
+            return true;
+        }
+    }
+
+    if (AMyPlayerController* MPC = Cast<AMyPlayerController>(PC))
+    {
+        if (PC->GetPawn() && PC->GetPawn()->IsA<AGhostCharacter>())
+        {
+            MPC->ClientFinalizeGhostTransition();
+        }
+        else if (const AMyCharacter* MC = Cast<AMyCharacter>(PC->GetPawn()))
+        {
+            MPC->ClientRestoreAfterReconnect(MC->GetSeekerHitCount());
+        }
+    }
+
+    return true;
+}
+
+void AMyGameMode::OnReconnectGraceExpired()
+{
+    EvaluateTeamsAfterLogout(nullptr, false);
 }
 
 void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -59,6 +190,12 @@ void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewP
     if (!bAutoSpawnOnLogin) return;
 
     if (NewPlayer->GetPawn())
+    {
+        return;
+    }
+
+    // 재접속자는 PostLogin에서 기존 캐릭터를 다시 조종하게 하므로 새로 만들지 않는다.
+    if (DisconnectedPlayers.Contains(GetReconnectKey(NewPlayer)))
     {
         return;
     }
@@ -83,12 +220,33 @@ void AMyGameMode::Logout(AController* Exiting)
         ? Exiting->GetPlayerState<AMyPlayerState>()
         : nullptr;
 
+    // 경기 중 원격 플레이어가 끊기면 상태와 캐릭터를 보관해 두고 재접속을 기다린다.
+    // (캐릭터는 AMyPlayerController::PawnLeavingGame에서 파괴되지 않고 남는다)
+    APlayerController* ExitingPC = Cast<APlayerController>(Exiting);
+    if (ShouldKeepPawnOnDisconnect()
+        && ExitingPC
+        && !ExitingPC->IsLocalController()
+        && ExitingPlayerState
+        && ExitingPlayerState->GetFinalRole() != EFinalRole::None)
+    {
+        const FString Key = GetReconnectKey(ExitingPC);
+        if (!Key.IsEmpty())
+        {
+            FDisconnectedPlayerRecord Record;
+            ExitingPlayerState->ExportReconnectData(Record.Data);
+            Record.Pawn = ExitingPC->GetPawn();
+            DisconnectedPlayers.Add(Key, Record);
+
+            UE_LOG(LogTemp, Log, TEXT("Player disconnected mid-match, waiting for reconnect: %s"), *ExitingPlayerState->GetNickname());
+        }
+    }
+
     Super::Logout(Exiting);
 
     EvaluateTeamsAfterLogout(ExitingPlayerState);
 }
 
-void AMyGameMode::EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState)
+void AMyGameMode::EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState, bool bAllowGrace)
 {
     if (!HasAuthority() || !GameState)
     {
@@ -138,6 +296,30 @@ void AMyGameMode::EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerSt
 
     if (bGameEnded)
     {
+        return;
+    }
+
+    const bool bTeamMissing = (RemainingSeekers == 0 && RemainingRunners > 0)
+        || (RemainingRunners == 0 && RemainingSeekers > 0);
+
+    if (!bTeamMissing)
+    {
+        return;
+    }
+
+    // 한 팀이 전원 끊겼으면 바로 승패를 내지 않고 재접속을 잠시 기다린다.
+    if (bAllowGrace && bAllowReconnect && ReconnectGraceSeconds > 0.f)
+    {
+        if (!GetWorldTimerManager().IsTimerActive(TH_ReconnectGrace))
+        {
+            UE_LOG(LogTemp, Log, TEXT("A team has no connected players. Waiting %.0fs for reconnect."), ReconnectGraceSeconds);
+            GetWorldTimerManager().SetTimer(
+                TH_ReconnectGrace,
+                this,
+                &AMyGameMode::OnReconnectGraceExpired,
+                ReconnectGraceSeconds,
+                false);
+        }
         return;
     }
 
@@ -206,7 +388,22 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
     if (!HasAuthority() || !IsValid(EliminatedRunner)) return;
 
     AController* PC = EliminatedRunner->GetController();
-    if (!PC) return;
+    if (!PC)
+    {
+        // 접속이 끊긴 러너가 탈락한 경우: 캐릭터는 남겨두고(재접속 시 유령으로 전환) 승패만 확인
+        if (EliminatedRunner->IsPossessing())
+        {
+            EliminatedRunner->ForceReleasePossessedProp_Server();
+        }
+
+        EliminatedRunner->ApplyEliminatedVisuals();
+
+        if (!HasAnyActiveRunner())
+        {
+            EndGameWithWinner(EFinalRole::Seeker);
+        }
+        return;
+    }
 
     const FVector SpawnLoc = EliminatedRunner->GetActorLocation();
     const FRotator SpawnRot = EliminatedRunner->GetActorRotation();
@@ -496,6 +693,21 @@ bool AMyGameMode::HasAnyActiveRunner() const
         }
 
         const AMyCharacter* Character = Cast<AMyCharacter>(PC->GetPawn());
+        if (Character && !Character->IsEliminated())
+        {
+            return true;
+        }
+    }
+
+    // 접속이 끊겨 재접속을 기다리는 러너의 캐릭터도 살아 있으면 활성 러너로 본다.
+    for (const TPair<FString, FDisconnectedPlayerRecord>& Pair : DisconnectedPlayers)
+    {
+        if (Pair.Value.Data.FinalRole != EFinalRole::Runner)
+        {
+            continue;
+        }
+
+        const AMyCharacter* Character = Cast<AMyCharacter>(Pair.Value.Pawn.Get());
         if (Character && !Character->IsEliminated())
         {
             return true;

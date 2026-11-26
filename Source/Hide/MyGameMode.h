@@ -36,6 +36,9 @@ public:
     void HandleCodeVictory(EFinalRole WinningRole);
     void EndGameWithWinner(EFinalRole WinningRole);
 
+    // 결과 화면에서 방장이 "바로 대기실로"를 누른 경우. 게임이 끝났고 요청자가 방장일 때만 이동한다.
+    void RequestReturnToWaitRoom(APlayerController* Requester);
+
     // 탈락으로 게임이 끝날 때 탈락 소리/화면 효과를 볼 수 있게 결과를 잠깐 늦춘다
     void EndGameWithWinnerDelayed(EFinalRole WinningRole, float DelaySeconds);
     void RegisterPhase1PossessedProp(APropBase* Prop);

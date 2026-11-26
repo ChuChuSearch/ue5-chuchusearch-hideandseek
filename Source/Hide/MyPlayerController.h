@@ -25,6 +25,7 @@ class UVolumeSettingsWidget;
 class UHitFlashWidget;
 class UEliminationNoticeWidget;
 class UControlsGuideWidget;
+class UReturnCountdownWidget;
 
 enum class EVolumeChannel : uint8
 {
@@ -111,6 +112,12 @@ public:
     void ClientShowGameResult(EFinalRole WinningRole);
 
     void ShowGameResultLocal(EFinalRole WinningRole);
+
+    // 결과 화면의 "바로 대기실로" 버튼(방장 전용). 서버에서 방장인지 다시 확인한다.
+    void RequestReturnToWaitRoomNow();
+
+    UFUNCTION(Server, Reliable)
+    void ServerRequestReturnToWaitRoom();
 
     UFUNCTION(Client, Reliable)
     void ClientEnterWaitRoomUI();
@@ -245,6 +252,10 @@ private:
     UUserWidget* GameResultWidgetInstance = nullptr;
 
     TWeakObjectPtr<AMyGameState> LastGameResultSource;
+
+    // 결과 화면 위에 띄우는 대기실 복귀 카운트다운 + 방장 버튼
+    UPROPERTY(Transient)
+    UReturnCountdownWidget* ReturnCountdownWidget = nullptr;
 
     // ===== 페이즈 소리 / 배경음 (각 클라 로컬에서만 재생) =====
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")

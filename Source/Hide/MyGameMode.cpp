@@ -359,7 +359,7 @@ void AMyGameMode::PostSeamlessTravel()
 {
     Super::PostSeamlessTravel();
 
-    // ���⼭ Pawn ����/���� ������ ���� �� ��
+    // 여기서는 Pawn을 만들거나 역할을 정하지 않는다. 플레이어별 처리는 HandleSeamlessTravelPlayer에서 한다.
 }
 
 void AMyGameMode::HandleSeamlessTravelPlayer(AController*& C)
@@ -513,7 +513,11 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
 
     if (AMyGameState* GS = GetGameState<AMyGameState>())
     {
-        GS->SetGamePhase_Server(EGamePhase::Ended, 0.0);
+        // 종료 페이즈 남은 시간 = 대기실 복귀까지 남은 시간(결과 화면 카운트다운이 이 값을 읽는다)
+        const double ReturnDelay = (bAutoReturnToWaitRoom && ReturnToWaitRoomDelaySeconds > 0.f)
+            ? static_cast<double>(ReturnToWaitRoomDelaySeconds)
+            : 0.0;
+        GS->SetGamePhase_Server(EGamePhase::Ended, ReturnDelay);
         GS->SetGameResult_Server(WinningRole);
     }
 
@@ -545,6 +549,23 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
             );
         }
     }
+}
+
+void AMyGameMode::RequestReturnToWaitRoom(APlayerController* Requester)
+{
+    if (!HasAuthority() || !bGameEnded || !Requester)
+    {
+        return;
+    }
+
+    const AMyPlayerState* PS = Requester->GetPlayerState<AMyPlayerState>();
+    if (!PS || !PS->IsHost())
+    {
+        UE_LOG(LogTemp, Log, TEXT("Ignored return-to-wait-room request from a non-host player."));
+        return;
+    }
+
+    ReturnToWaitRoom();
 }
 
 void AMyGameMode::ReturnToWaitRoom()

@@ -26,6 +26,7 @@
 #include "EliminationNoticeWidget.h"
 #include "HideCameraShakes.h"
 #include "ControlsGuideWidget.h"
+#include "ReturnCountdownWidget.h"
 #include "NicknameLocalSubsystem.h"
 #include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
@@ -1653,7 +1654,31 @@ void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
         }
     }
 
+    // 결과 화면 위에 대기실 복귀 카운트다운(+ 방장용 바로 이동 버튼)
+    if (!ReturnCountdownWidget)
+    {
+        ReturnCountdownWidget = CreateWidget<UReturnCountdownWidget>(this, UReturnCountdownWidget::StaticClass());
+    }
+    if (ReturnCountdownWidget && !ReturnCountdownWidget->IsInViewport())
+    {
+        ReturnCountdownWidget->AddToViewport(1001);
+        bShowMouseCursor = true;
+    }
+
     OnGameResultReceived(WinningRole, bWon);
+}
+
+void AMyPlayerController::RequestReturnToWaitRoomNow()
+{
+    ServerRequestReturnToWaitRoom();
+}
+
+void AMyPlayerController::ServerRequestReturnToWaitRoom_Implementation()
+{
+    if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
+    {
+        GM->RequestReturnToWaitRoom(this);
+    }
 }
 
 // ===== 페이즈 소리 / 배경음 =====

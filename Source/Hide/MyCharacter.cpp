@@ -1174,13 +1174,60 @@ void AMyCharacter::ApplySeekerHit_Server()
     OnRep_SeekerHitCount();
     ForceNetUpdate();
 
-    if (SeekerHitCount >= MaxSeekerHitsBeforeElimination)
+    const bool bWillBeEliminated = SeekerHitCount >= MaxSeekerHitsBeforeElimination;
+    PlayRunnerHitSounds_Server(bWillBeEliminated);
+
+    if (bWillBeEliminated)
     {
         SetEliminated_Server(true);
 
         if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
         {
             GM->HandleRunnerEliminated(this);
+        }
+    }
+}
+
+void AMyCharacter::PlayRunnerHitSounds_Server(bool bEliminatedNow)
+{
+    if (!HasAuthority() || !GetWorld())
+    {
+        return;
+    }
+
+    // 엔진 기본 Client RPC(ClientPlaySound)로 해당 플레이어 화면에서만 2D 재생
+    APlayerController* MyPC = Cast<APlayerController>(GetController());
+
+    if (!bEliminatedNow)
+    {
+        // 하트가 줄었을 때: 맞은 본인만
+        if (MyPC && RunnerHitSound)
+        {
+            MyPC->ClientPlaySound(RunnerHitSound, RunnerHitSoundVolume);
+        }
+        return;
+    }
+
+    if (!RunnerEliminatedSound)
+    {
+        return;
+    }
+
+    if (!bEliminatedSoundForEveryone)
+    {
+        if (MyPC)
+        {
+            MyPC->ClientPlaySound(RunnerEliminatedSound, RunnerEliminatedSoundVolume);
+        }
+        return;
+    }
+
+    // 탈락 알림: 모든 플레이어
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        if (APlayerController* PC = It->Get())
+        {
+            PC->ClientPlaySound(RunnerEliminatedSound, RunnerEliminatedSoundVolume);
         }
     }
 }

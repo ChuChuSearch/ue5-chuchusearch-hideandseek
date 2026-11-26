@@ -581,6 +581,14 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
     ++PlacedCount;
     LastPlacementServerWorldTime = GetWorld()->GetTimeSeconds();
     ForceNetUpdate();
+
+    if (PlaceSound)
+    {
+        if (APlayerController* PC = Cast<APlayerController>(GetController()))
+        {
+            PC->ClientPlaySound(PlaceSound, PlaceSoundVolume);
+        }
+    }
 }
 
 void AGhostCharacter::TryRefreshRespawnList()

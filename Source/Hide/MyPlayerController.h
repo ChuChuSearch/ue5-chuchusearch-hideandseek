@@ -260,6 +260,13 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase", meta = (ClampMin = "0"))
     int32 LastSecondsTickCount = 10;
 
+    // 비밀번호 제출 결과(제출한 본인만 들림)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Password")
+    USoundBase* PasswordCorrectSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Password")
+    USoundBase* PasswordWrongSound = nullptr;
+
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Result")
     USoundBase* WinSound = nullptr;
 

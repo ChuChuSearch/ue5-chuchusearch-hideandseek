@@ -7,6 +7,7 @@
 
 class APropBase;
 class ASeekerProjectile;
+class USoundBase;
 
 UCLASS()
 class HIDE_API AMyCharacter : public ACharacter
@@ -91,6 +92,27 @@ public:
     void SetEliminated_Server(bool bNewEliminated);
 
     void ApplySeekerHit_Server();
+
+    // ===== Sound =====
+    // 하트가 줄었을 때(맞은 본인만 들림)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* RunnerHitSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float RunnerHitSoundVolume = 1.0f;
+
+    // 러너가 탈락했을 때
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* RunnerEliminatedSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float RunnerEliminatedSoundVolume = 1.0f;
+
+    // true면 탈락 소리를 모든 플레이어가 듣는다(false면 탈락한 본인만)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    bool bEliminatedSoundForEveryone = true;
+
+    void PlayRunnerHitSounds_Server(bool bEliminatedNow);
 
     UFUNCTION(BlueprintCallable)
     int32 GetSeekerHitCount() const { return SeekerHitCount; }

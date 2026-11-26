@@ -10,6 +10,7 @@ class UPrimitiveComponent;
 class UWidgetComponent;
 class USphereComponent;
 class UTexture2D;
+class USoundBase;
 
 UCLASS()
 class HIDE_API ACluePickup : public AActor
@@ -52,4 +53,11 @@ protected:
 
     UPROPERTY(EditDefaultsOnly, Category = "Clue")
     int32 ClueNumber = 0;
+
+    // 새 단서를 얻은 플레이어에게만 들림
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* PickupSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float PickupSoundVolume = 1.0f;
 };

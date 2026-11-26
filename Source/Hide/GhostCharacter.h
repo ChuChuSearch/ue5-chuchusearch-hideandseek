@@ -8,6 +8,7 @@
 class AGhostPlacementPreview;
 class AMyPlayerController;
 class UStaticMesh;
+class USoundBase;
 class UInputComponent;
 
 UCLASS()
@@ -75,6 +76,13 @@ protected:
 protected:
     UPROPERTY(EditDefaultsOnly, Category = "Ghost|Placement")
     TSubclassOf<AGhostPlacementPreview> PlacementPreviewClass = nullptr;
+
+    // 프롭 배치 성공 시 배치한 유령 본인만 들림(술래에게 위치가 드러나지 않게)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* PlaceSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float PlaceSoundVolume = 1.0f;
 
     UPROPERTY()
     AGhostPlacementPreview* PlacementPreviewActor = nullptr;

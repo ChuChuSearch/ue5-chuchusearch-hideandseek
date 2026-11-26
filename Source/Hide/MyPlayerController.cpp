@@ -1044,6 +1044,8 @@ bool AMyPlayerController::CanSubmitPasswordCode_Server(const AMyGameState* GS) c
 
 void AMyPlayerController::ClientReceivePasswordAttemptResult_Implementation(int32 CorrectCount, bool bSuccess, double CooldownRemaining)
 {
+    PlayUISound(bSuccess ? PasswordCorrectSound : PasswordWrongSound);
+
     if (!PasswordInputWidgetInstance)
     {
         return;

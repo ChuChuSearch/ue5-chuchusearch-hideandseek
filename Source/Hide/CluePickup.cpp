@@ -6,6 +6,7 @@
 #include "MyCharacter.h"
 #include "MyPlayerState.h"
 #include "Components/PrimitiveComponent.h"
+#include "GameFramework/PlayerController.h"
 
 ACluePickup::ACluePickup()
 {
@@ -87,5 +88,12 @@ void ACluePickup::OnOverlapBegin(
     AMyPlayerState* PS = MyChar->GetPlayerState<AMyPlayerState>();
     if (!PS) return;
 
-    PS->CollectClue_Server(ClueNumber);
+    // 새로 얻었을 때만, 주운 플레이어 화면에서만 소리 재생(엔진 기본 Client RPC 사용)
+    if (PS->CollectClue_Server(ClueNumber) && PickupSound)
+    {
+        if (APlayerController* PC = Cast<APlayerController>(MyChar->GetController()))
+        {
+            PC->ClientPlaySound(PickupSound, PickupSoundVolume);
+        }
+    }
 }

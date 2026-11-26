@@ -160,14 +160,14 @@ bool AMyPlayerState::HasCollectedClue(int32 InClueNumber) const
     return CollectedClueNumbers.Contains(InClueNumber);
 }
 
-void AMyPlayerState::CollectClue_Server(int32 InClueNumber)
+bool AMyPlayerState::CollectClue_Server(int32 InClueNumber)
 {
-    if (!HasAuthority()) return;
-    if (InClueNumber < 0 || InClueNumber > 9) return;
+    if (!HasAuthority()) return false;
+    if (InClueNumber < 0 || InClueNumber > 9) return false;
 
     if (CollectedClueNumbers.Contains(InClueNumber))
     {
-        return;
+        return false;
     }
 
     CollectedClueNumbers.Add(InClueNumber);
@@ -179,6 +179,7 @@ void AMyPlayerState::CollectClue_Server(int32 InClueNumber)
 
     ForceNetUpdate();
     NotifyClueCollectionChanged();
+    return true;
 }
 
 void AMyPlayerState::OnRep_CollectedClueNumbers()

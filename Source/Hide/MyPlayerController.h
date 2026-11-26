@@ -347,6 +347,19 @@ private:
 
     UPROPERTY(Transient)
     UEliminationNoticeWidget* EliminationNoticeWidget = nullptr;
+
+    // ===== 대기실 닉네임: 입력하는 대로 서버에 보낸다(확인 버튼 없음) =====
+    UFUNCTION()
+    void OnNicknameTextChanged(const FText& Text);
+
+    UFUNCTION()
+    void OnNicknameTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
+
+    void SendPendingNickname();
+
+    FTimerHandle TH_NicknameSend;
+    FString PendingNickname;
+    FString LastSentNickname;
 };
 
 

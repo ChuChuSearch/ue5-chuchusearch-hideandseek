@@ -25,6 +25,7 @@
 #include "HitFlashWidget.h"
 #include "EliminationNoticeWidget.h"
 #include "HideCameraShakes.h"
+#include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
@@ -685,15 +686,65 @@ void AMyPlayerController::ShowWaitRoomUI()
 
     WaitRoomWidgetInstance->AddToViewport();
 
+    // 닉네임은 입력하는 대로 서버에 보낸다. 확인 버튼은 숨긴다(배경 연필 그림은 그대로).
+    if (UEditableTextBox* NicknameBox = Cast<UEditableTextBox>(WaitRoomWidgetInstance->GetWidgetFromName(TEXT("NicknameBox"))))
+    {
+        NicknameBox->OnTextChanged.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextChanged);
+        NicknameBox->OnTextCommitted.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextCommitted);
+    }
+    if (UWidget* ConfirmButton = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ConfirmNicknameButton")))
+    {
+        ConfirmButton->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
     FInputModeUIOnly Mode;
     SetInputMode(Mode);
 
     bShowMouseCursor = true;
 }
 
+void AMyPlayerController::OnNicknameTextChanged(const FText& Text)
+{
+    PendingNickname = Text.ToString();
+
+    // 글자마다 보내지 않고, 입력이 잠깐 멈추면 한 번 보낸다
+    GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.35f, false);
+}
+
+void AMyPlayerController::OnNicknameTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
+{
+    // Enter를 누르거나 다른 곳을 클릭하면 바로 보낸다
+    PendingNickname = Text.ToString();
+    GetWorldTimerManager().ClearTimer(TH_NicknameSend);
+    SendPendingNickname();
+}
+
+void AMyPlayerController::SendPendingNickname()
+{
+    const FString Nickname = PendingNickname.TrimStartAndEnd();
+    if (Nickname.IsEmpty() || Nickname == LastSentNickname)
+    {
+        return;
+    }
+
+    if (AMyPlayerState* PS = GetPlayerState<AMyPlayerState>())
+    {
+        PS->ServerSetNickname(Nickname);
+        LastSentNickname = Nickname;
+    }
+}
+
 void AMyPlayerController::UI_RequestStartGame()
 {
     if (!IsLocalController()) return;
+
+    // 입력 직후 바로 시작을 눌러도 대기 중인 닉네임을 먼저 보낸다
+    if (GetWorldTimerManager().IsTimerActive(TH_NicknameSend))
+    {
+        GetWorldTimerManager().ClearTimer(TH_NicknameSend);
+        SendPendingNickname();
+    }
+
     ServerRequestStartGame();
 }
 

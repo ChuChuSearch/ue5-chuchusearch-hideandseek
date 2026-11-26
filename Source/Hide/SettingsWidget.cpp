@@ -404,11 +404,21 @@ void USettingsWidget::BuildConfirmBanner(UVerticalBox* Box)
     UHorizontalBox* Line = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     ConfirmBanner->SetContent(Line);
 
+    // 안내 글은 두 줄로 고정(제목 + 남은 초). 글이 바뀌어도 크기가 변하지 않게 줄바꿈은 쓰지 않는다.
+    UVerticalBox* TextStack = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+    UTextBlock* ConfirmTitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ConfirmTitle"));
+    ConfirmTitle->SetText(FText::FromString(TEXT("바뀐 설정을 유지할까요?")));
+    ConfirmTitle->SetFont(MakeFont(true, 17));
+    ConfirmTitle->SetColorAndOpacity(FSlateColor(LabelColor));
+    TextStack->AddChildToVerticalBox(ConfirmTitle);
+
     ConfirmText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ConfirmText"));
-    ConfirmText->SetFont(MakeFont(true, 17));
-    ConfirmText->SetColorAndOpacity(FSlateColor(LabelColor));
-    ConfirmText->SetAutoWrapText(true);
-    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(ConfirmText))
+    ConfirmText->SetText(FText::FromString(TEXT("10초 후 원래대로 돌아갑니다")));
+    ConfirmText->SetFont(MakeFont(false, 14));
+    ConfirmText->SetColorAndOpacity(FSlateColor(AccentDark));
+    TextStack->AddChildToVerticalBox(ConfirmText);
+
+    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(TextStack))
     {
         S->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         S->SetVerticalAlignment(VAlign_Center);
@@ -438,10 +448,17 @@ void USettingsWidget::BuildConfirmBanner(UVerticalBox* Box)
         S->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f));
     }
 
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(ConfirmBanner))
+    // 띠 크기를 고정: 폭은 설정 줄 전체 폭(이름 + 조작 칸), 높이는 두 줄 글 + 버튼이 들어가는 만큼.
+    // 숨겨져 있을 때도 같은 자리를 차지하므로 띠가 나타나도 창 크기가 바뀌지 않는다.
+    USizeBox* BannerSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ConfirmBannerSize"));
+    BannerSize->SetWidthOverride(LabelWidth + LabelGap + SelectorWidth);
+    BannerSize->SetHeightOverride(64.f);
+    BannerSize->SetContent(ConfirmBanner);
+
+    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(BannerSize))
     {
         S->SetPadding(FMargin(0.f, 16.f, 0.f, 0.f));
-        S->SetHorizontalAlignment(HAlign_Fill);
+        S->SetHorizontalAlignment(HAlign_Center);
     }
 }
 
@@ -1271,7 +1288,7 @@ void USettingsWidget::UpdateConfirmBanner()
     LastShownSecond = Second;
 
     ConfirmText->SetText(FText::FromString(FString::Printf(
-        TEXT("바뀐 그래픽 설정을 유지할까요?  %d초 후 원래대로 돌아갑니다"), Second)));
+        TEXT("%d초 후 원래대로 돌아갑니다"), Second)));
 }
 
 void USettingsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)

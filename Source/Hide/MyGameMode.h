@@ -31,6 +31,8 @@ public:
 
     void SpawnPlayerAsRole(APlayerController* PC, bool bSeeker);
     void HandleRunnerEliminated(AMyCharacter* EliminatedRunner);
+    // 모든 플레이어 화면에 탈락 알림. 실제 탈락 순간에 한 번만 호출(재접속 시 유령 전환에서는 호출 안 함)
+    void BroadcastEliminationNotice(const AMyCharacter* EliminatedRunner) const;
     void HandleCodeVictory(EFinalRole WinningRole);
     void EndGameWithWinner(EFinalRole WinningRole);
 
@@ -140,6 +142,7 @@ protected:
     void ResolveForcedSwapProps();
     void ClearPhase1PropBans();
     bool HasAnyActiveRunner() const;
+    int32 CountActiveRunners() const;
     void EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState, bool bAllowGrace = true);
 
     FTimerHandle TH_GamePhase;

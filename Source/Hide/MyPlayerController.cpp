@@ -23,6 +23,7 @@
 #include "TimerManager.h"
 #include "VolumeSettingsWidget.h"
 #include "HitFlashWidget.h"
+#include "EliminationNoticeWidget.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
@@ -219,6 +220,31 @@ void AMyPlayerController::ClientPlayHitFlash_Implementation(bool bEliminated)
     }
 
     HitFlashWidget->Play(bEliminated ? 1.0f : 0.8f, bEliminated ? 1.4f : 0.7f);
+}
+
+void AMyPlayerController::ClientShowEliminationNotice_Implementation(const FString& RunnerName, int32 RemainingRunners)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (!EliminationNoticeWidget)
+    {
+        EliminationNoticeWidget = CreateWidget<UEliminationNoticeWidget>(this, UEliminationNoticeWidget::StaticClass());
+    }
+    if (!EliminationNoticeWidget)
+    {
+        return;
+    }
+
+    if (!EliminationNoticeWidget->IsInViewport())
+    {
+        // 피격 효과(900) 아래, 게임 UI 위
+        EliminationNoticeWidget->AddToViewport(850);
+    }
+
+    EliminationNoticeWidget->AddNotice(RunnerName, RemainingRunners);
 }
 
 void AMyPlayerController::ToggleSettingsMenu()

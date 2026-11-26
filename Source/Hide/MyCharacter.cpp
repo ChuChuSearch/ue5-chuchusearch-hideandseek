@@ -654,7 +654,9 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
     Capsule->SetCapsuleSize(NewRadius, NewHalfHeight, true);
     const float HalfHeightDelta = Capsule->GetScaledCapsuleHalfHeight() - OldScaledHalfHeight;
 
-    if (!FMath::IsNearlyZero(HalfHeightDelta))
+    // 다른 플레이어 화면(시뮬레이티드 프록시)에서는 위치가 서버에서 이미 보정된 값으로 복제되므로
+    // 여기서 또 옮기면 두 번 적용돼 해제 후 땅에 박혀 보인다. 서버와 조종하는 본인만 옮긴다.
+    if (!FMath::IsNearlyZero(HalfHeightDelta) && GetLocalRole() != ROLE_SimulatedProxy)
     {
         AddActorWorldOffset(
             FVector(0.f, 0.f, HalfHeightDelta),
@@ -1238,6 +1240,7 @@ void AMyCharacter::ApplySeekerHit_Server()
 
         if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
         {
+            GM->BroadcastEliminationNotice(this);
             GM->HandleRunnerEliminated(this);
         }
     }

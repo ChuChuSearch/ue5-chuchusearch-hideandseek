@@ -20,7 +20,11 @@ void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
     if (!HasAuthority()) return;
 
     // 게임 도중 닉네임 변경(다른 사람 사칭 등) 방지: 대기실에서만 허용
-    if (!IsInWaitRoom_Server()) return;
+    if (!IsInWaitRoom_Server())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ServerSetNickname rejected (not in wait room): '%s' for %s"), *InNickname, *GetPlayerName());
+        return;
+    }
 
     // 제어 문자(개행, 탭, 널 등) 제거 후 공백 정리
     FString Sanitized;
@@ -38,10 +42,12 @@ void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
 
     if (Sanitized.IsEmpty())
     {
+        UE_LOG(LogTemp, Warning, TEXT("ServerSetNickname rejected (empty): %s"), *GetPlayerName());
         return;
     }
 
     Nickname = Sanitized;
+    UE_LOG(LogTemp, Log, TEXT("ServerSetNickname: %s -> '%s'"), *GetPlayerName(), *Nickname);
     ForceNetUpdate();
 }
 

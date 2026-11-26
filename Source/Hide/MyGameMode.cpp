@@ -702,11 +702,13 @@ void AMyGameMode::ClearPhase1PropBans()
     BannedPhase1Props.Empty();
 }
 
-bool AMyGameMode::HasAnyActiveRunner() const
+int32 AMyGameMode::CountActiveRunners() const
 {
+    int32 Count = 0;
+
     if (!GetWorld())
     {
-        return false;
+        return 0;
     }
 
     for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
@@ -721,7 +723,7 @@ bool AMyGameMode::HasAnyActiveRunner() const
         const AMyCharacter* Character = Cast<AMyCharacter>(PC->GetPawn());
         if (Character && !Character->IsEliminated())
         {
-            return true;
+            ++Count;
         }
     }
 
@@ -736,11 +738,43 @@ bool AMyGameMode::HasAnyActiveRunner() const
         const AMyCharacter* Character = Cast<AMyCharacter>(Pair.Value.Pawn.Get());
         if (Character && !Character->IsEliminated())
         {
-            return true;
+            ++Count;
         }
     }
 
-    return false;
+    return Count;
+}
+
+bool AMyGameMode::HasAnyActiveRunner() const
+{
+    return CountActiveRunners() > 0;
+}
+
+void AMyGameMode::BroadcastEliminationNotice(const AMyCharacter* EliminatedRunner) const
+{
+    if (!GetWorld() || !IsValid(EliminatedRunner))
+    {
+        return;
+    }
+
+    FString Name;
+    if (const AMyPlayerState* PS = EliminatedRunner->GetPlayerState<AMyPlayerState>())
+    {
+        Name = PS->GetNickname().IsEmpty() ? PS->GetPlayerName() : PS->GetNickname();
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("EliminationNotice: name='%s' (PS=%s)"), *Name, *GetNameSafe(EliminatedRunner->GetPlayerState()));
+
+    // 탈락 처리(bEliminated=true) 뒤에 호출되므로 남은 수에서 이미 빠져 있다
+    const int32 Remaining = CountActiveRunners();
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        if (AMyPlayerController* MPC = Cast<AMyPlayerController>(It->Get()))
+        {
+            MPC->ClientShowEliminationNotice(Name, Remaining);
+        }
+    }
 }
 
 void AMyGameMode::ResolveForcedSwapProps()

@@ -23,6 +23,7 @@ class USoundClass;
 class USoundMix;
 class UVolumeSettingsWidget;
 class UHitFlashWidget;
+class UEliminationNoticeWidget;
 
 enum class EVolumeChannel : uint8
 {
@@ -100,6 +101,10 @@ public:
     // 맞았을 때 화면 가장자리 빨간 효과(맞은 본인만). 탈락이면 더 진하고 길게.
     UFUNCTION(Client, Unreliable)
     void ClientPlayHitFlash(bool bEliminated);
+
+    // 러너 탈락 알림(모든 플레이어 화면 위쪽)
+    UFUNCTION(Client, Reliable)
+    void ClientShowEliminationNotice(const FString& RunnerName, int32 RemainingRunners);
 
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
@@ -339,6 +344,9 @@ private:
 
     UPROPERTY(Transient)
     UHitFlashWidget* HitFlashWidget = nullptr;
+
+    UPROPERTY(Transient)
+    UEliminationNoticeWidget* EliminationNoticeWidget = nullptr;
 };
 
 

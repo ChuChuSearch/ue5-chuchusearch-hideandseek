@@ -3,23 +3,56 @@
 #include "MyPlayerController.h"
 
 #include "Blueprint/WidgetTree.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "Components/Border.h"
-#include "Components/BorderSlot.h"
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
+#include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Sound/SoundBase.h"
+#include "Styling/CoreStyle.h"
 
 namespace
 {
-    // 다른 버튼들과 같은 클릭/호버 소리
     const TCHAR* ClickSoundPath = TEXT("/Game/Game/Sounds/UI/SFX_UI_Click.SFX_UI_Click");
     const TCHAR* HoverSoundPath = TEXT("/Game/Game/Sounds/UI/SFX_UI_Hover.SFX_UI_Hover");
+    const TCHAR* BoldFontPath = TEXT("/Game/Game/Fonts/Maplestory_Bold_Font.Maplestory_Bold_Font");
+    const TCHAR* LightFontPath = TEXT("/Game/Game/Fonts/Maplestory_Light_Font.Maplestory_Light_Font");
+
+    // 대기실/닉네임 입력 UI에서 따온 색
+    FLinearColor Hex(uint8 R, uint8 G, uint8 B, uint8 A = 255)
+    {
+        return FLinearColor::FromSRGBColor(FColor(R, G, B, A));
+    }
+
+    const FLinearColor PanelOuterFill = Hex(255, 236, 196);  // 바깥 테두리 안쪽(연한 살구)
+    const FLinearColor PanelOuterLine = Hex(236, 152, 42);   // 주황 테두리
+    const FLinearColor PanelInnerFill = Hex(255, 252, 242);  // 크림색 본문
+    const FLinearColor PanelInnerLine = Hex(240, 196, 128);  // 안쪽 얇은 금색 선
+    const FLinearColor RibbonFill = Hex(146, 92, 232);       // 보라 리본
+    const FLinearColor RibbonLine = Hex(92, 46, 170);
+    const FLinearColor LabelColor = Hex(122, 74, 30);        // 갈색 글씨
+    const FLinearColor AccentColor = Hex(255, 128, 128);     // START 버튼 코랄
+    const FLinearColor AccentDark = Hex(214, 82, 90);
+    const FLinearColor TrackFill = Hex(244, 228, 198);
+    const FLinearColor TrackLine = Hex(218, 180, 120);
+
+    FSlateBrush RoundBox(const FLinearColor& Fill, float Radius, const FLinearColor& Line = FLinearColor::Transparent, float LineWidth = 0.f, const FVector2f& Size = FVector2f::ZeroVector)
+    {
+        FSlateRoundedBoxBrush Brush(Fill, Line, LineWidth, Size);
+        Brush.OutlineSettings.CornerRadii = FVector4(Radius, Radius, Radius, Radius);
+        Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+        return Brush;
+    }
+
+    constexpr float ThumbSize = 28.f;
 }
 
 void UVolumeSettingsWidget::InitFromController(AMyPlayerController* InPC)
@@ -38,46 +71,100 @@ TSharedRef<SWidget> UVolumeSettingsWidget::RebuildWidget()
     return Super::RebuildWidget();
 }
 
+FSlateFontInfo UVolumeSettingsWidget::MakeFont(bool bBold, int32 Size, const FLinearColor& OutlineColor, int32 OutlineSize) const
+{
+    const UObject* FontObj = bBold ? BoldFont.Get() : LightFont.Get();
+    FFontOutlineSettings Outline;
+    Outline.OutlineSize = OutlineSize;
+    Outline.OutlineColor = OutlineColor;
+
+    if (FontObj)
+    {
+        return FSlateFontInfo(FontObj, Size, NAME_None, Outline);
+    }
+
+    // 폰트 에셋을 못 찾으면 엔진 기본 폰트
+    FSlateFontInfo Fallback = FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+    Fallback.OutlineSettings = Outline;
+    return Fallback;
+}
+
 void UVolumeSettingsWidget::BuildTree()
 {
     SetIsFocusable(true);
 
-    // 화면 전체를 어둡게 덮는 바깥 테두리
+    BoldFont = LoadObject<UObject>(nullptr, BoldFontPath);
+    LightFont = LoadObject<UObject>(nullptr, LightFontPath);
+
+    // 화면 전체를 어둡게
     UBorder* Dim = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Dim"));
-    Dim->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.55f));
+    Dim->SetBrushColor(FLinearColor(0.f, 0.f, 0.f, 0.6f));
     Dim->SetHorizontalAlignment(HAlign_Center);
     Dim->SetVerticalAlignment(VAlign_Center);
     WidgetTree->RootWidget = Dim;
 
-    UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Panel"));
-    Panel->SetBrushColor(FLinearColor(0.04f, 0.04f, 0.06f, 0.95f));
-    Panel->SetPadding(FMargin(32.f, 24.f));
-    Dim->SetContent(Panel);
+    // 패널 위에 리본 제목을 겹쳐 올린다
+    UOverlay* Card = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Card"));
+    Dim->SetContent(Card);
 
-    UVerticalBox* Box = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Rows"));
-    Panel->SetContent(Box);
+    UBorder* Outer = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PanelOuter"));
+    Outer->SetBrush(RoundBox(PanelOuterFill, 30.f, PanelOuterLine, 5.f));
+    Outer->SetPadding(FMargin(10.f));
+    if (UOverlaySlot* S = Card->AddChildToOverlay(Outer))
+    {
+        S->SetPadding(FMargin(0.f, 28.f, 0.f, 0.f));
+        S->SetHorizontalAlignment(HAlign_Fill);
+        S->SetVerticalAlignment(VAlign_Fill);
+    }
+
+    UBorder* Inner = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PanelInner"));
+    Inner->SetBrush(RoundBox(PanelInnerFill, 22.f, PanelInnerLine, 2.f));
+    Inner->SetPadding(FMargin(44.f, 46.f, 44.f, 26.f));
+    Outer->SetContent(Inner);
+
+    UBorder* Ribbon = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("Ribbon"));
+    Ribbon->SetBrush(RoundBox(RibbonFill, 16.f, RibbonLine, 3.f));
+    Ribbon->SetPadding(FMargin(48.f, 8.f, 48.f, 10.f));
+    if (UOverlaySlot* S = Card->AddChildToOverlay(Ribbon))
+    {
+        S->SetHorizontalAlignment(HAlign_Center);
+        S->SetVerticalAlignment(VAlign_Top);
+    }
 
     UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Title"));
     Title->SetText(FText::FromString(TEXT("소리 설정")));
-    FSlateFontInfo TitleFont = Title->GetFont();
-    TitleFont.Size = 26;
-    Title->SetFont(TitleFont);
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Title))
+    Title->SetFont(MakeFont(true, 30, RibbonLine, 3));
+    Title->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+    Ribbon->SetContent(Title);
+
+    UVerticalBox* Box = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Rows"));
+    Inner->SetContent(Box);
+
+    const FText Labels[] = {
+        FText::FromString(TEXT("전체")),
+        FText::FromString(TEXT("배경음")),
+        FText::FromString(TEXT("효과음"))
+    };
+    for (const FText& Label : Labels)
     {
-        S->SetPadding(FMargin(0.f, 0.f, 0.f, 16.f));
-        S->SetHorizontalAlignment(HAlign_Center);
+        const FVolumeRow Row = AddRow(Box, Label);
+        Sliders.Add(Row.Slider);
+        Fills.Add(Row.Fill);
+        Percents.Add(Row.Percent);
     }
 
-    MasterSlider = AddRow(Box, FText::FromString(TEXT("전체")), MasterPercent);
-    MusicSlider = AddRow(Box, FText::FromString(TEXT("배경음")), MusicPercent);
-    SFXSlider = AddRow(Box, FText::FromString(TEXT("효과음")), SFXPercent);
+    Sliders[0]->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnMasterChanged);
+    Sliders[1]->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnMusicChanged);
+    Sliders[2]->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnSFXChanged);
 
-    MasterSlider->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnMasterChanged);
-    MusicSlider->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnMusicChanged);
-    SFXSlider->OnValueChanged.AddDynamic(this, &UVolumeSettingsWidget::OnSFXChanged);
-
+    // 닫기 버튼: START 버튼 같은 코랄 알약 모양
     UButton* Close = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("CloseButton"));
     FButtonStyle Style = Close->GetStyle();
+    Style.SetNormal(RoundBox(AccentColor, 26.f, FLinearColor::White, 3.f));
+    Style.SetHovered(RoundBox(Hex(255, 158, 150), 26.f, FLinearColor::White, 3.f));
+    Style.SetPressed(RoundBox(AccentDark, 26.f, FLinearColor::White, 3.f));
+    Style.SetNormalPadding(FMargin(0.f));
+    Style.SetPressedPadding(FMargin(0.f, 2.f, 0.f, 0.f));
     if (USoundBase* Click = LoadObject<USoundBase>(nullptr, ClickSoundPath))
     {
         Style.PressedSlateSound.SetResourceObject(Click);
@@ -87,121 +174,177 @@ void UVolumeSettingsWidget::BuildTree()
         Style.HoveredSlateSound.SetResourceObject(Hover);
     }
     Close->SetStyle(Style);
+    Close->SetBackgroundColor(FLinearColor::White);
     Close->OnClicked.AddDynamic(this, &UVolumeSettingsWidget::OnCloseClicked);
+
+    USizeBox* CloseSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    CloseSize->SetWidthOverride(200.f);
+    CloseSize->SetHeightOverride(54.f);
+    CloseSize->SetContent(Close);
 
     UTextBlock* CloseText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("CloseText"));
     CloseText->SetText(FText::FromString(TEXT("닫기")));
-    CloseText->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
+    CloseText->SetFont(MakeFont(true, 24, AccentDark, 2));
+    CloseText->SetColorAndOpacity(FSlateColor(Hex(255, 250, 238)));
     Close->SetContent(CloseText);
 
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Close))
+    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(CloseSize))
     {
-        S->SetPadding(FMargin(0.f, 20.f, 0.f, 0.f));
+        S->SetPadding(FMargin(0.f, 26.f, 0.f, 0.f));
         S->SetHorizontalAlignment(HAlign_Center);
     }
 
     UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Hint"));
     Hint->SetText(FText::FromString(TEXT("ESC / F10 으로 열고 닫기")));
-    Hint->SetColorAndOpacity(FSlateColor(FLinearColor(1.f, 1.f, 1.f, 0.5f)));
-    FSlateFontInfo HintFont = Hint->GetFont();
-    HintFont.Size = 12;
-    Hint->SetFont(HintFont);
+    Hint->SetFont(MakeFont(false, 14));
+    Hint->SetColorAndOpacity(FSlateColor(LabelColor.CopyWithNewOpacity(0.6f)));
     if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Hint))
     {
-        S->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
+        S->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
         S->SetHorizontalAlignment(HAlign_Center);
     }
 
     RefreshFromController();
 }
 
-USlider* UVolumeSettingsWidget::AddRow(UVerticalBox* Box, const FText& Label, TObjectPtr<UTextBlock>& OutPercent)
+UVolumeSettingsWidget::FVolumeRow UVolumeSettingsWidget::AddRow(UVerticalBox* Box, const FText& Label)
 {
-    UHorizontalBox* Row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+    FVolumeRow Row;
 
+    UHorizontalBox* Line = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+
+    // 이름
     USizeBox* LabelBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
     LabelBox->SetWidthOverride(110.f);
     UTextBlock* LabelText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
     LabelText->SetText(Label);
+    LabelText->SetFont(MakeFont(true, 22));
+    LabelText->SetColorAndOpacity(FSlateColor(LabelColor));
     LabelBox->SetContent(LabelText);
-    if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(LabelBox))
+    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(LabelBox))
     {
         S->SetVerticalAlignment(VAlign_Center);
     }
 
+    // 슬라이더: 채워지는 막대(ProgressBar) 위에 손잡이만 보이는 Slider를 겹친다
     USizeBox* SliderBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-    SliderBox->SetWidthOverride(320.f);
-    USlider* Slider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
-    Slider->SetMinValue(0.f);
-    Slider->SetMaxValue(1.f);
-    Slider->SetStepSize(0.05f);
-    Slider->SetValue(1.f);
-    SliderBox->SetContent(Slider);
-    if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(SliderBox))
+    SliderBox->SetWidthOverride(340.f);
+    SliderBox->SetHeightOverride(ThumbSize + 6.f);
+    UOverlay* SliderStack = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+    SliderBox->SetContent(SliderStack);
+
+    USizeBox* TrackSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    TrackSize->SetHeightOverride(16.f);
+    Row.Fill = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+    FProgressBarStyle BarStyle = Row.Fill->GetWidgetStyle();
+    BarStyle.SetBackgroundImage(RoundBox(TrackFill, 8.f, TrackLine, 2.f));
+    BarStyle.SetFillImage(RoundBox(AccentColor, 8.f));
+    Row.Fill->SetWidgetStyle(BarStyle);
+    Row.Fill->SetFillColorAndOpacity(FLinearColor::White);
+    Row.Fill->SetPercent(1.f);
+    TrackSize->SetContent(Row.Fill);
+    if (UOverlaySlot* S = SliderStack->AddChildToOverlay(TrackSize))
+    {
+        // 손잡이 중심이 움직이는 구간과 막대 끝을 맞춘다
+        S->SetPadding(FMargin(ThumbSize * 0.5f, 0.f));
+        S->SetHorizontalAlignment(HAlign_Fill);
+        S->SetVerticalAlignment(VAlign_Center);
+    }
+
+    Row.Slider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
+    FSliderStyle SliderStyle = Row.Slider->GetWidgetStyle();
+    const FSlateBrush NoBar = RoundBox(FLinearColor::Transparent, 0.f);
+    SliderStyle.SetNormalBarImage(NoBar);
+    SliderStyle.SetHoveredBarImage(NoBar);
+    SliderStyle.SetDisabledBarImage(NoBar);
+    const FVector2f Thumb(ThumbSize, ThumbSize);
+    SliderStyle.SetNormalThumbImage(RoundBox(FLinearColor::White, ThumbSize * 0.5f, AccentColor, 4.f, Thumb));
+    SliderStyle.SetHoveredThumbImage(RoundBox(Hex(255, 240, 236), ThumbSize * 0.5f, AccentDark, 4.f, Thumb));
+    SliderStyle.SetDisabledThumbImage(RoundBox(Hex(230, 230, 230), ThumbSize * 0.5f, TrackLine, 4.f, Thumb));
+    SliderStyle.SetBarThickness(16.f);
+    Row.Slider->SetWidgetStyle(SliderStyle);
+    Row.Slider->SetSliderBarColor(FLinearColor::White);
+    Row.Slider->SetSliderHandleColor(FLinearColor::White);
+    Row.Slider->SetMinValue(0.f);
+    Row.Slider->SetMaxValue(1.f);
+    Row.Slider->SetStepSize(0.05f);
+    Row.Slider->SetValue(1.f);
+    if (UOverlaySlot* S = SliderStack->AddChildToOverlay(Row.Slider))
+    {
+        S->SetHorizontalAlignment(HAlign_Fill);
+        S->SetVerticalAlignment(VAlign_Center);
+    }
+
+    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(SliderBox))
     {
         S->SetVerticalAlignment(VAlign_Center);
     }
 
+    // 퍼센트
     USizeBox* PercentBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-    PercentBox->SetWidthOverride(70.f);
-    OutPercent = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    OutPercent->SetJustification(ETextJustify::Right);
-    OutPercent->SetText(PercentText(1.f));
-    PercentBox->SetContent(OutPercent);
-    if (UHorizontalBoxSlot* S = Row->AddChildToHorizontalBox(PercentBox))
+    PercentBox->SetWidthOverride(90.f);
+    Row.Percent = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+    Row.Percent->SetJustification(ETextJustify::Right);
+    Row.Percent->SetFont(MakeFont(true, 22));
+    Row.Percent->SetColorAndOpacity(FSlateColor(AccentDark));
+    Row.Percent->SetText(FText::FromString(TEXT("100%")));
+    PercentBox->SetContent(Row.Percent);
+    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(PercentBox))
     {
+        // 슬라이더와 숫자 사이 간격
+        S->SetPadding(FMargin(24.f, 0.f, 0.f, 0.f));
         S->SetVerticalAlignment(VAlign_Center);
     }
 
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Row))
+    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Line))
     {
-        S->SetPadding(FMargin(0.f, 6.f));
+        S->SetPadding(FMargin(0.f, 8.f));
     }
 
-    return Slider;
+    return Row;
 }
 
-void UVolumeSettingsWidget::RefreshFromController()
+void UVolumeSettingsWidget::SetRowValue(int32 Index, float Value)
 {
-    if (!OwnerPC || !MasterSlider)
+    if (!Sliders.IsValidIndex(Index))
     {
         return;
     }
 
-    const float Master = OwnerPC->GetVolumeSetting(EVolumeChannel::Master);
-    const float Music = OwnerPC->GetVolumeSetting(EVolumeChannel::Music);
-    const float SFX = OwnerPC->GetVolumeSetting(EVolumeChannel::SFX);
-
-    MasterSlider->SetValue(Master);
-    MusicSlider->SetValue(Music);
-    SFXSlider->SetValue(SFX);
-    MasterPercent->SetText(PercentText(Master));
-    MusicPercent->SetText(PercentText(Music));
-    SFXPercent->SetText(PercentText(SFX));
+    Fills[Index]->SetPercent(Value);
+    Percents[Index]->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Value * 100.f))));
 }
 
-FText UVolumeSettingsWidget::PercentText(float Value)
+void UVolumeSettingsWidget::RefreshFromController()
 {
-    return FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(Value * 100.f)));
+    if (!OwnerPC || Sliders.Num() < 3)
+    {
+        return;
+    }
+
+    const EVolumeChannel Channels[] = { EVolumeChannel::Master, EVolumeChannel::Music, EVolumeChannel::SFX };
+    for (int32 i = 0; i < 3; ++i)
+    {
+        const float Value = OwnerPC->GetVolumeSetting(Channels[i]);
+        Sliders[i]->SetValue(Value);
+        SetRowValue(i, Value);
+    }
 }
 
-void UVolumeSettingsWidget::OnMasterChanged(float Value)
+void UVolumeSettingsWidget::HandleChanged(int32 Index, float Value)
 {
-    MasterPercent->SetText(PercentText(Value));
-    if (OwnerPC) OwnerPC->SetVolumeSetting(EVolumeChannel::Master, Value);
+    SetRowValue(Index, Value);
+
+    if (OwnerPC)
+    {
+        const EVolumeChannel Channels[] = { EVolumeChannel::Master, EVolumeChannel::Music, EVolumeChannel::SFX };
+        OwnerPC->SetVolumeSetting(Channels[Index], Value);
+    }
 }
 
-void UVolumeSettingsWidget::OnMusicChanged(float Value)
-{
-    MusicPercent->SetText(PercentText(Value));
-    if (OwnerPC) OwnerPC->SetVolumeSetting(EVolumeChannel::Music, Value);
-}
-
-void UVolumeSettingsWidget::OnSFXChanged(float Value)
-{
-    SFXPercent->SetText(PercentText(Value));
-    if (OwnerPC) OwnerPC->SetVolumeSetting(EVolumeChannel::SFX, Value);
-}
+void UVolumeSettingsWidget::OnMasterChanged(float Value) { HandleChanged(0, Value); }
+void UVolumeSettingsWidget::OnMusicChanged(float Value) { HandleChanged(1, Value); }
+void UVolumeSettingsWidget::OnSFXChanged(float Value) { HandleChanged(2, Value); }
 
 void UVolumeSettingsWidget::OnCloseClicked()
 {

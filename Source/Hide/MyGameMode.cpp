@@ -499,6 +499,12 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
         return;
     }
 
+    // 플레이 종료로 모두 로그아웃되는 중(월드 정리 중)에는 승패 처리를 하지 않는다
+    if (!GetWorld() || GetWorld()->bIsTearingDown)
+    {
+        return;
+    }
+
     UE_LOG(LogTemp, Log, TEXT("EndGameWithWinner: WinningRole=%d"), static_cast<int32>(WinningRole));
 
     bGameEnded = true;
@@ -556,7 +562,18 @@ void AMyGameMode::ReturnToWaitRoom()
     // Returning to the lobby should discard match-only controllers, pawns, and UI.
     // A seamless travel can preserve the result widget and leave clients on its black frame.
     bUseSeamlessTravel = false;
-    GetWorld()->ServerTravel(WaitRoomTravelURL, true);
+
+    // 반드시 상대 경로(bAbsolute=false)로 이동한다.
+    // 절대 경로 이동은 이전 주소의 포트와 옵션(listen 등)을 버리고 기본 포트(7777)로 다시 열린다.
+    // 클라이언트는 원래 접속했던 주소/포트(PIE는 17777 등)로 재접속하므로 포트가 달라지면 대기실로 못 들어온다.
+    // 상대 경로는 포트와 listen을 그대로 유지하고, ?game= 옵션은 새 값으로 덮어쓴다.
+    FString TravelURL = WaitRoomTravelURL;
+    if (!TravelURL.Contains(TEXT("listen"), ESearchCase::IgnoreCase))
+    {
+        TravelURL += TEXT("?listen");
+    }
+
+    GetWorld()->ServerTravel(TravelURL, false);
 }
 
 void AMyGameMode::NotifyRunnerReachedSpecialExit(AMyCharacter* Runner)

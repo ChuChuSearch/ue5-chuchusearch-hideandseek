@@ -26,6 +26,7 @@
 #include "EliminationNoticeWidget.h"
 #include "HideCameraShakes.h"
 #include "ControlsGuideWidget.h"
+#include "NicknameLocalSubsystem.h"
 #include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
@@ -750,6 +751,17 @@ void AMyPlayerController::ShowWaitRoomUI()
     {
         NicknameBox->OnTextChanged.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextChanged);
         NicknameBox->OnTextCommitted.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextCommitted);
+
+        // 게임을 마치고 돌아온 경우: 전에 쓰던 닉네임을 채우고 서버에 다시 보낸다
+        // (대기실 복귀는 재접속 방식이라 서버의 PlayerState가 새로 만들어진다)
+        const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
+        if (NickSub && !NickSub->GetNickname().IsEmpty())
+        {
+            NicknameBox->SetText(FText::FromString(NickSub->GetNickname()));
+            PendingNickname = NickSub->GetNickname();
+            LastSentNickname.Empty();
+            GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.5f, false);
+        }
     }
     if (UWidget* ConfirmButton = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ConfirmNicknameButton")))
     {
@@ -786,10 +798,20 @@ void AMyPlayerController::SendPendingNickname()
         return;
     }
 
-    if (AMyPlayerState* PS = GetPlayerState<AMyPlayerState>())
+    AMyPlayerState* PS = GetPlayerState<AMyPlayerState>();
+    if (!PS)
     {
-        PS->ServerSetNickname(Nickname);
-        LastSentNickname = Nickname;
+        // 접속 직후라 아직 PlayerState가 안 왔으면 잠시 뒤 다시 시도
+        GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.5f, false);
+        return;
+    }
+
+    PS->ServerSetNickname(Nickname);
+    LastSentNickname = Nickname;
+
+    if (UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr)
+    {
+        NickSub->SetNickname(Nickname);
     }
 }
 
@@ -1565,6 +1587,12 @@ void AMyPlayerController::ClientShowGameResult_Implementation(EFinalRole Winning
 void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
 {
     if (!IsLocalController())
+    {
+        return;
+    }
+
+    // 플레이 종료/맵 이동으로 월드를 정리하는 중이면 결과 화면을 만들지 않는다
+    if (!GetWorld() || GetWorld()->bIsTearingDown)
     {
         return;
     }

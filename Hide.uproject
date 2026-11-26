@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{AA3F5988-46AF-5CD1-4924-B285A92B9162}",
+	"EngineAssociation": "5.4",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -23,6 +23,10 @@
 		},
 		{
 			"Name": "DatasmithImporter",
+			"Enabled": true
+		},
+		{
+			"Name": "WaveformEditor",
 			"Enabled": true
 		}
 	]

@@ -8,6 +8,10 @@ public class Hide : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+        // 파일을 하나로 묶어 컴파일하지 않는다(파일마다 있는 같은 이름의 지역 도우미 함수가 충돌하지 않게).
+        // 모듈이 작아서 빌드 시간 차이는 거의 없다.
+        bUseUnity = false;
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",

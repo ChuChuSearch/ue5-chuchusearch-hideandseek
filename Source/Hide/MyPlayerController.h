@@ -19,6 +19,16 @@ class APasswordDoor;
 class UDestroyProgressWidget;
 class USoundBase;
 class UAudioComponent;
+class USoundClass;
+class USoundMix;
+class UVolumeSettingsWidget;
+
+enum class EVolumeChannel : uint8
+{
+    Master,
+    Music,
+    SFX
+};
 
 UCLASS()
 class HIDE_API AMyPlayerController : public APlayerController
@@ -31,6 +41,12 @@ public:
     virtual void BeginPlay() override;
     virtual void PlayerTick(float DeltaTime) override;
     virtual void SetupInputComponent() override;
+
+    // ===== 볼륨 설정 (로컬 전용, GameUserSettings.ini에 저장) =====
+    float GetVolumeSetting(EVolumeChannel Channel) const;
+    void SetVolumeSetting(EVolumeChannel Channel, float Value);
+    void ToggleSettingsMenu();
+    void CloseSettingsMenu();
 
     UFUNCTION(BlueprintCallable)
     void UI_RequestStartGame();
@@ -292,6 +308,29 @@ private:
     void StopMusic();
     void StopFeverLoop();
     void PlayUISound(USoundBase* Sound, float Volume = 1.f);
+
+    // ===== 볼륨 설정 =====
+    // 사운드 웨이브에 지정된 Sound Class(배경음/효과음)별로 볼륨을 덮어쓴다
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Volume")
+    TSoftObjectPtr<USoundClass> MusicSoundClass = TSoftObjectPtr<USoundClass>(FSoftObjectPath(TEXT("/Game/Game/Sounds/Classes/SC_Music.SC_Music")));
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Volume")
+    TSoftObjectPtr<USoundClass> SFXSoundClass = TSoftObjectPtr<USoundClass>(FSoftObjectPath(TEXT("/Game/Game/Sounds/Classes/SC_SFX.SC_SFX")));
+
+    UPROPERTY(Transient)
+    USoundMix* VolumeMix = nullptr;
+
+    UPROPERTY(Transient)
+    UVolumeSettingsWidget* SettingsWidget = nullptr;
+
+    float VolumeMaster = 1.f;
+    float VolumeMusic = 1.f;
+    float VolumeSFX = 1.f;
+    bool bSettingsPrevShowCursor = false;
+
+    void LoadVolumeSettings();
+    void SaveVolumeSettings() const;
+    void ApplyVolumeSettings();
 };
 
 

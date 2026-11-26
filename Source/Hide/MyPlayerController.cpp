@@ -21,6 +21,11 @@
 #include "Sound/SoundBase.h"
 #include "Components/PrimitiveComponent.h"
 #include "TimerManager.h"
+#include "VolumeSettingsWidget.h"
+#include "Sound/SoundClass.h"
+#include "Sound/SoundMix.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Framework/Application/SlateApplication.h"
 
 AMyPlayerController::AMyPlayerController()
 {
@@ -32,6 +37,12 @@ AMyPlayerController::AMyPlayerController()
 void AMyPlayerController::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (IsLocalController())
+    {
+        LoadVolumeSettings();
+        ApplyVolumeSettings();
+    }
 
     ULocalPlayer* LP = GetLocalPlayer();
     if (LP)
@@ -95,6 +106,150 @@ void AMyPlayerController::SetupInputComponent()
         {
             EIC->BindAction(IA_GhostPlacementRefresh, ETriggerEvent::Started, this, &AMyPlayerController::OnGhostPlacementRefreshPressed);
         }
+    }
+
+    // 볼륨 설정 창. 에디터 PIE에서는 ESC가 플레이 종료라서 F10도 같이 쓴다.
+    if (InputComponent)
+    {
+        InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
+        InputComponent->BindKey(EKeys::F10, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
+    }
+}
+
+namespace
+{
+    const TCHAR* VolumeConfigSection = TEXT("/Script/Hide.VolumeSettings");
+}
+
+float AMyPlayerController::GetVolumeSetting(EVolumeChannel Channel) const
+{
+    switch (Channel)
+    {
+    case EVolumeChannel::Music: return VolumeMusic;
+    case EVolumeChannel::SFX: return VolumeSFX;
+    default: return VolumeMaster;
+    }
+}
+
+void AMyPlayerController::SetVolumeSetting(EVolumeChannel Channel, float Value)
+{
+    Value = FMath::Clamp(Value, 0.f, 1.f);
+    switch (Channel)
+    {
+    case EVolumeChannel::Music: VolumeMusic = Value; break;
+    case EVolumeChannel::SFX: VolumeSFX = Value; break;
+    default: VolumeMaster = Value; break;
+    }
+    ApplyVolumeSettings();
+}
+
+void AMyPlayerController::LoadVolumeSettings()
+{
+    if (!GConfig)
+    {
+        return;
+    }
+
+    GConfig->GetFloat(VolumeConfigSection, TEXT("Master"), VolumeMaster, GGameUserSettingsIni);
+    GConfig->GetFloat(VolumeConfigSection, TEXT("Music"), VolumeMusic, GGameUserSettingsIni);
+    GConfig->GetFloat(VolumeConfigSection, TEXT("SFX"), VolumeSFX, GGameUserSettingsIni);
+    VolumeMaster = FMath::Clamp(VolumeMaster, 0.f, 1.f);
+    VolumeMusic = FMath::Clamp(VolumeMusic, 0.f, 1.f);
+    VolumeSFX = FMath::Clamp(VolumeSFX, 0.f, 1.f);
+}
+
+void AMyPlayerController::SaveVolumeSettings() const
+{
+    if (!GConfig)
+    {
+        return;
+    }
+
+    GConfig->SetFloat(VolumeConfigSection, TEXT("Master"), VolumeMaster, GGameUserSettingsIni);
+    GConfig->SetFloat(VolumeConfigSection, TEXT("Music"), VolumeMusic, GGameUserSettingsIni);
+    GConfig->SetFloat(VolumeConfigSection, TEXT("SFX"), VolumeSFX, GGameUserSettingsIni);
+    GConfig->Flush(false, GGameUserSettingsIni);
+}
+
+void AMyPlayerController::ApplyVolumeSettings()
+{
+    if (!IsLocalController() || GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    if (!VolumeMix)
+    {
+        VolumeMix = NewObject<USoundMix>(this, TEXT("VolumeMix"));
+        UGameplayStatics::PushSoundMixModifier(this, VolumeMix);
+    }
+
+    // 전체 볼륨은 두 클래스에 곱해서 적용
+    if (USoundClass* MusicClass = MusicSoundClass.LoadSynchronous())
+    {
+        UGameplayStatics::SetSoundMixClassOverride(this, VolumeMix, MusicClass, VolumeMaster * VolumeMusic, 1.f, 0.f, true);
+    }
+    if (USoundClass* SFXClass = SFXSoundClass.LoadSynchronous())
+    {
+        UGameplayStatics::SetSoundMixClassOverride(this, VolumeMix, SFXClass, VolumeMaster * VolumeSFX, 1.f, 0.f, true);
+    }
+}
+
+void AMyPlayerController::ToggleSettingsMenu()
+{
+    if (SettingsWidget)
+    {
+        CloseSettingsMenu();
+        return;
+    }
+
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    SettingsWidget = CreateWidget<UVolumeSettingsWidget>(this, UVolumeSettingsWidget::StaticClass());
+    if (!SettingsWidget)
+    {
+        return;
+    }
+
+    SettingsWidget->InitFromController(this);
+    SettingsWidget->AddToViewport(1000);
+
+    bSettingsPrevShowCursor = bShowMouseCursor;
+    bShowMouseCursor = true;
+
+    FInputModeGameAndUI Mode;
+    Mode.SetWidgetToFocus(SettingsWidget->TakeWidget());
+    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    Mode.SetHideCursorDuringCapture(false);
+    SetInputMode(Mode);
+}
+
+void AMyPlayerController::CloseSettingsMenu()
+{
+    if (!SettingsWidget)
+    {
+        return;
+    }
+
+    SettingsWidget->RemoveFromParent();
+    SettingsWidget = nullptr;
+    SaveVolumeSettings();
+
+    // 열기 전 상태로 되돌린다(게임 중이면 커서 숨기고 게임 입력만)
+    bShowMouseCursor = bSettingsPrevShowCursor;
+    if (!bSettingsPrevShowCursor)
+    {
+        SetInputMode(FInputModeGameOnly());
+    }
+    else
+    {
+        FInputModeGameAndUI Mode;
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        Mode.SetHideCursorDuringCapture(false);
+        SetInputMode(Mode);
     }
 }
 

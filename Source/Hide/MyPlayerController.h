@@ -24,6 +24,7 @@ class USoundMix;
 class UVolumeSettingsWidget;
 class UHitFlashWidget;
 class UEliminationNoticeWidget;
+class UControlsGuideWidget;
 
 enum class EVolumeChannel : uint8
 {
@@ -360,6 +361,13 @@ private:
     FTimerHandle TH_NicknameSend;
     FString PendingNickname;
     FString LastSentNickname;
+
+    // ===== 역할별 조작법 안내(게임 맵에서만, H로 열고 닫기) =====
+    UPROPERTY(Transient)
+    UControlsGuideWidget* ControlsGuideWidget = nullptr;
+
+    void UpdateControlsGuide();
+    void ToggleControlsGuide();
 };
 
 

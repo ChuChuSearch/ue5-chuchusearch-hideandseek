@@ -25,6 +25,7 @@
 #include "HitFlashWidget.h"
 #include "EliminationNoticeWidget.h"
 #include "HideCameraShakes.h"
+#include "ControlsGuideWidget.h"
 #include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
@@ -117,6 +118,7 @@ void AMyPlayerController::SetupInputComponent()
     {
         InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
         InputComponent->BindKey(EKeys::F10, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
+        InputComponent->BindKey(EKeys::H, IE_Pressed, this, &AMyPlayerController::ToggleControlsGuide);
     }
 }
 
@@ -257,6 +259,62 @@ void AMyPlayerController::ClientShowEliminationNotice_Implementation(const FStri
     EliminationNoticeWidget->AddNotice(RunnerName, RemainingRunners);
 }
 
+void AMyPlayerController::UpdateControlsGuide()
+{
+    if (!IsLocalController() || !GetWorld())
+    {
+        return;
+    }
+
+    // 게임 맵에서 게임이 진행 중일 때만 보여준다(대기실/결과 화면 제외)
+    EGuideRole GuideRole = EGuideRole::None;
+    const bool bGameMap = GetWorld()->GetMapName().Contains(TEXT("GameMap"));
+    const AMyGameState* GS = GetWorld()->GetGameState<AMyGameState>();
+    const bool bEnded = GS && GS->GetGamePhase() == EGamePhase::Ended;
+
+    if (bGameMap && !bEnded)
+    {
+        if (GetGhostCharacter())
+        {
+            GuideRole = EGuideRole::Ghost;
+        }
+        else if (const AMyCharacter* MC = GetMyCharacter())
+        {
+            GuideRole = MC->IsSeeker() ? EGuideRole::Seeker : EGuideRole::Runner;
+        }
+    }
+
+    if (GuideRole == EGuideRole::None && !ControlsGuideWidget)
+    {
+        return;
+    }
+
+    if (!ControlsGuideWidget)
+    {
+        ControlsGuideWidget = CreateWidget<UControlsGuideWidget>(this, UControlsGuideWidget::StaticClass());
+        if (!ControlsGuideWidget)
+        {
+            return;
+        }
+    }
+
+    if (!ControlsGuideWidget->IsInViewport())
+    {
+        // 탈락 알림(850)/피격 효과(900)/설정 창(1000) 아래
+        ControlsGuideWidget->AddToViewport(800);
+    }
+
+    ControlsGuideWidget->SetRole(GuideRole);
+}
+
+void AMyPlayerController::ToggleControlsGuide()
+{
+    if (ControlsGuideWidget)
+    {
+        ControlsGuideWidget->ToggleExpanded();
+    }
+}
+
 void AMyPlayerController::ToggleSettingsMenu()
 {
     if (SettingsWidget)
@@ -332,6 +390,7 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
     }
 
     UpdatePhaseSounds();
+    UpdateControlsGuide();
 
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {

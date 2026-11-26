@@ -5,6 +5,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Blueprint/UserWidget.h"
 #include "MyPlayerState.h"
+#include "MyGameState.h"
 #include "MyPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -16,6 +17,8 @@ class AMyPlayerState;
 class AMyGameState;
 class APasswordDoor;
 class UDestroyProgressWidget;
+class USoundBase;
+class UAudioComponent;
 
 UCLASS()
 class HIDE_API AMyPlayerController : public APlayerController
@@ -215,6 +218,73 @@ private:
     UUserWidget* GameResultWidgetInstance = nullptr;
 
     TWeakObjectPtr<AMyGameState> LastGameResultSource;
+
+    // ===== 페이즈 소리 / 배경음 (각 클라 로컬에서만 재생) =====
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")
+    USoundBase* WaitRoomMusic = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")
+    USoundBase* HideTimeMusic = nullptr;
+
+    // 1페이즈~2페이즈(강제 교체 포함) 동안 이어서 재생
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")
+    USoundBase* PhaseMusic = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")
+    USoundBase* FeverMusic = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
+    float MusicVolume = 0.5f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
+    float MusicFadeSeconds = 1.0f;
+
+    // 술래가 풀려날 때(1페이즈), 2페이즈, 피버 시작 시
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase")
+    USoundBase* PhaseStartSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase")
+    USoundBase* ForcedSwapSound = nullptr;
+
+    // 피버 동안 배경음 위에 겹쳐 반복 재생(선택)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase")
+    USoundBase* FeverLoopSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase", meta = (ClampMin = "0.0"))
+    float FeverLoopVolume = 0.4f;
+
+    // 경기 종료 직전 마지막 N초 동안 1초마다
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase")
+    USoundBase* LastSecondsTickSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Phase", meta = (ClampMin = "0"))
+    int32 LastSecondsTickCount = 10;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Result")
+    USoundBase* WinSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Result")
+    USoundBase* LoseSound = nullptr;
+
+    UPROPERTY()
+    UAudioComponent* MusicComponent = nullptr;
+
+    UPROPERTY()
+    UAudioComponent* FeverLoopComponent = nullptr;
+
+    UPROPERTY()
+    USoundBase* CurrentMusic = nullptr;
+
+    TWeakObjectPtr<AMyGameState> LastSoundGameState;
+    EGamePhase LastSoundPhase = EGamePhase::None;
+    int32 LastTickSecond = -1;
+
+    void UpdatePhaseSounds();
+    void HandlePhaseChangedLocal(EGamePhase OldPhase, EGamePhase NewPhase);
+    void PlayMusic(USoundBase* Music);
+    void StopMusic();
+    void StopFeverLoop();
+    void PlayUISound(USoundBase* Sound, float Volume = 1.f);
 };
 
 

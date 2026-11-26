@@ -17,6 +17,8 @@
 #include "Camera/CameraComponent.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/AudioComponent.h"
+#include "Sound/SoundBase.h"
 #include "Components/PrimitiveComponent.h"
 #include "TimerManager.h"
 
@@ -47,6 +49,7 @@ void AMyPlayerController::BeginPlay()
     {
         ShowWaitRoomUI();
         CloseGameRoomUI();
+        PlayMusic(WaitRoomMusic);
     }
     else if (LevelName == TEXT("GameMap"))
     {
@@ -110,6 +113,8 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
         UpdateGameRoomTeamStatus();
         UpdateGameTimeWidgets();
     }
+
+    UpdatePhaseSounds();
 
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
@@ -522,6 +527,9 @@ void AMyPlayerController::ClientEnterWaitRoomUI_Implementation()
     }
 
     ShowWaitRoomUI();
+
+    StopFeverLoop();
+    PlayMusic(WaitRoomMusic);
 }
 
 void AMyPlayerController::CloseWaitRoomUI()
@@ -1244,6 +1252,10 @@ void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
     const AMyPlayerState* MPS = GetPlayerState<AMyPlayerState>();
     const bool bWon = MPS && MPS->GetFinalRole() == WinningRole;
 
+    StopFeverLoop();
+    StopMusic();
+    PlayUISound(bWon ? WinSound : LoseSound);
+
     UE_LOG(LogTemp, Log, TEXT("ClientShowGameResult: WinningRole=%d, bWon=%s, ResultWidgetClass=%s"),
         static_cast<int32>(WinningRole),
         bWon ? TEXT("true") : TEXT("false"),
@@ -1286,4 +1298,167 @@ void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
     }
 
     OnGameResultReceived(WinningRole, bWon);
+}
+
+// ===== 페이즈 소리 / 배경음 =====
+// 모두 로컬 화면용이라 RPC 없이 각 클라가 복제된 GameState의 페이즈를 보고 직접 재생한다.
+
+void AMyPlayerController::UpdatePhaseSounds()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (!GS)
+    {
+        return;
+    }
+
+    // 맵이 바뀌어 GameState가 새로 생기면 처음부터 다시 본다.
+    if (LastSoundGameState.Get() != GS)
+    {
+        LastSoundGameState = GS;
+        LastSoundPhase = EGamePhase::None;
+        LastTickSecond = -1;
+    }
+
+    const EGamePhase Phase = GS->GetGamePhase();
+    if (Phase != LastSoundPhase)
+    {
+        const EGamePhase OldPhase = LastSoundPhase;
+        LastSoundPhase = Phase;
+        LastTickSecond = -1;
+        HandlePhaseChangedLocal(OldPhase, Phase);
+    }
+
+    // 경기 종료 직전(피버 마지막 N초) 1초마다 똑딱
+    if (Phase == EGamePhase::FeverTime && LastSecondsTickSound && LastSecondsTickCount > 0)
+    {
+        const int32 Second = FMath::CeilToInt(static_cast<float>(GS->GetPhaseRemainingSeconds()));
+        if (Second > 0 && Second <= LastSecondsTickCount && Second != LastTickSecond)
+        {
+            LastTickSecond = Second;
+            PlayUISound(LastSecondsTickSound);
+        }
+    }
+}
+
+void AMyPlayerController::HandlePhaseChangedLocal(EGamePhase OldPhase, EGamePhase NewPhase)
+{
+    // 경기 도중 들어온 경우(재접속 등)에는 알림음 없이 배경음만 맞춘다.
+    const bool bPlayStinger = OldPhase != EGamePhase::None;
+
+    switch (NewPhase)
+    {
+    case EGamePhase::HideTime:
+        PlayMusic(HideTimeMusic);
+        break;
+
+    case EGamePhase::Phase1:
+    case EGamePhase::Phase2:
+        if (bPlayStinger)
+        {
+            PlayUISound(PhaseStartSound);
+        }
+        StopFeverLoop();
+        PlayMusic(PhaseMusic);
+        break;
+
+    case EGamePhase::ForcedSwap:
+        if (bPlayStinger)
+        {
+            PlayUISound(ForcedSwapSound);
+        }
+        PlayMusic(PhaseMusic);
+        break;
+
+    case EGamePhase::FeverTime:
+        if (bPlayStinger)
+        {
+            PlayUISound(PhaseStartSound);
+        }
+        PlayMusic(FeverMusic);
+        if (FeverLoopSound && !FeverLoopComponent)
+        {
+            FeverLoopComponent = UGameplayStatics::SpawnSound2D(this, FeverLoopSound, FeverLoopVolume, 1.f, 0.f, nullptr, false, true);
+        }
+        break;
+
+    case EGamePhase::Ended:
+        // 승리/패배 소리는 결과 화면(ShowGameResultLocal)에서 재생
+        StopFeverLoop();
+        StopMusic();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void AMyPlayerController::PlayMusic(USoundBase* Music)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    // 같은 곡이 이미 재생 중이면 끊지 않고 이어서 재생
+    if (Music && Music == CurrentMusic && IsValid(MusicComponent) && MusicComponent->IsPlaying())
+    {
+        return;
+    }
+
+    StopMusic();
+
+    if (!Music)
+    {
+        return;
+    }
+
+    // 레벨 이동 시 자동 정리되도록 bPersistAcrossLevelTransition=false
+    MusicComponent = UGameplayStatics::SpawnSound2D(this, Music, MusicVolume, 1.f, 0.f, nullptr, false, true);
+    if (MusicComponent && MusicFadeSeconds > 0.f)
+    {
+        MusicComponent->FadeIn(MusicFadeSeconds, MusicVolume);
+    }
+    CurrentMusic = Music;
+}
+
+void AMyPlayerController::StopMusic()
+{
+    if (IsValid(MusicComponent))
+    {
+        if (MusicFadeSeconds > 0.f)
+        {
+            MusicComponent->FadeOut(MusicFadeSeconds, 0.f);
+        }
+        else
+        {
+            MusicComponent->Stop();
+        }
+    }
+
+    MusicComponent = nullptr;
+    CurrentMusic = nullptr;
+}
+
+void AMyPlayerController::StopFeverLoop()
+{
+    if (IsValid(FeverLoopComponent))
+    {
+        FeverLoopComponent->FadeOut(0.5f, 0.f);
+    }
+    FeverLoopComponent = nullptr;
+}
+
+void AMyPlayerController::PlayUISound(USoundBase* Sound, float Volume)
+{
+    if (!Sound || !IsLocalController())
+    {
+        return;
+    }
+
+    UGameplayStatics::PlaySound2D(this, Sound, Volume);
 }

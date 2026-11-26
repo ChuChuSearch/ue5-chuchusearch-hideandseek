@@ -7,6 +7,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "PropBase.h"
 
+#include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/Controller.h"
@@ -345,7 +346,14 @@ bool AMyCharacter::IsCharacterReleaseLocationClear(APropBase* Prop, const FVecto
 
 void AMyCharacter::ServerReleaseProp_Implementation()
 {
+    const bool bWasPossessing = PossessedProp != nullptr;
     ReleasePossessedPropInternal(false);
+
+    // 실제로 해제됐을 때만(강제 빙의 잠금/빈 자리 없음으로 취소되면 소리 없음)
+    if (bWasPossessing && !PossessedProp)
+    {
+        PlayOwnerSound_Server(ReleaseSound, PossessSoundVolume);
+    }
 }
 
 void AMyCharacter::ReleasePossessedPropInternal(bool bIgnoreForcedPossessLock)
@@ -704,10 +712,10 @@ void AMyCharacter::TryPossess_Server(APropBase* Prop, bool bRequireLineOfSight)
     // 벽 너머 프롭 빙의 차단
     if (bRequireLineOfSight && !HasLineOfSightToProp(Prop)) return;
 
-    // 이미 빙의 중이면 먼저 해제
+    // 이미 빙의 중이면 먼저 해제(갈아타기: 해제 소리 없이 빙의 소리만)
     if (PossessedProp)
     {
-        ServerReleaseProp();
+        ReleasePossessedPropInternal(false);
         if (PossessedProp)
         {
             return;
@@ -728,6 +736,8 @@ void AMyCharacter::TryPossess_Server(APropBase* Prop, bool bRequireLineOfSight)
 
     ForceNetUpdate();
     Prop->ForceNetUpdate();
+
+    PlayOwnerSound_Server(PossessSound, PossessSoundVolume);
 
     if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
     {
@@ -978,6 +988,8 @@ void AMyCharacter::FinishDestroyPropSkill()
         GS->TrySpawnClueFromDestroyedProp(Target);
     }
 
+    MulticastPlayDestroyDoneSound(Target->GetActorLocation());
+
     Target->Destroy();
 
     if (IsValid(PossessingCharacter)
@@ -1012,6 +1024,43 @@ void AMyCharacter::OnRep_DestroySkillState()
             PC->HideDestroyProgressUI();
         }
     }
+
+    UpdateDestroyProgressSound();
+}
+
+void AMyCharacter::UpdateDestroyProgressSound()
+{
+    if (GetNetMode() == NM_DedicatedServer)
+    {
+        return;
+    }
+
+    if (bIsDestroying)
+    {
+        if (DestroyProgressSound && !IsValid(DestroyProgressAudio))
+        {
+            DestroyProgressAudio = UGameplayStatics::SpawnSoundAttached(
+                DestroyProgressSound, GetRootComponent(), NAME_None,
+                FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, true,
+                DestroySoundVolume, 1.0f, 0.0f, DestroySoundAttenuation);
+        }
+    }
+    else if (IsValid(DestroyProgressAudio))
+    {
+        // 취소/완료 시 바로 끊기면 튀니까 짧게 줄인다
+        DestroyProgressAudio->FadeOut(0.1f, 0.0f);
+        DestroyProgressAudio = nullptr;
+    }
+}
+
+void AMyCharacter::MulticastPlayDestroyDoneSound_Implementation(FVector_NetQuantize Location)
+{
+    if (GetNetMode() == NM_DedicatedServer || !DestroyDoneSound)
+    {
+        return;
+    }
+
+    UGameplayStatics::PlaySoundAtLocation(this, DestroyDoneSound, Location, DestroySoundVolume, 1.0f, 0.0f, DestroySoundAttenuation);
 }
 
 void AMyCharacter::RequestSeekerAttack()
@@ -1185,6 +1234,19 @@ void AMyCharacter::ApplySeekerHit_Server()
         {
             GM->HandleRunnerEliminated(this);
         }
+    }
+}
+
+void AMyCharacter::PlayOwnerSound_Server(USoundBase* Sound, float Volume) const
+{
+    if (!HasAuthority() || !Sound)
+    {
+        return;
+    }
+
+    if (APlayerController* MyPC = Cast<APlayerController>(GetController()))
+    {
+        MyPC->ClientPlaySound(Sound, Volume);
     }
 }
 

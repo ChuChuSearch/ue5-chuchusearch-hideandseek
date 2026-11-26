@@ -8,6 +8,8 @@
 class APropBase;
 class ASeekerProjectile;
 class USoundBase;
+class USoundAttenuation;
+class UAudioComponent;
 
 UCLASS()
 class HIDE_API AMyCharacter : public ACharacter
@@ -113,6 +115,32 @@ public:
     bool bEliminatedSoundForEveryone = true;
 
     void PlayRunnerHitSounds_Server(bool bEliminatedNow);
+
+    // 빙의/해제 성공 시(본인만 들림: 술래에게 위치가 드러나지 않게)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* PossessSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* ReleaseSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float PossessSoundVolume = 1.0f;
+
+    void PlayOwnerSound_Server(USoundBase* Sound, float Volume) const;
+
+    // 술래 파괴 스킬: 진행 중 소리는 술래 위치에서, 완료 소리는 프롭 위치에서 모두에게 3D로 들림
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* DestroyProgressSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundBase* DestroyDoneSound = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Sound", meta = (ClampMin = "0.0"))
+    float DestroySoundVolume = 1.0f;
+
+    // 거리 감쇠(비우면 거리와 상관없이 같은 크기)
+    UPROPERTY(EditDefaultsOnly, Category = "Sound")
+    USoundAttenuation* DestroySoundAttenuation = nullptr;
 
     UFUNCTION(BlueprintCallable)
     int32 GetSeekerHitCount() const { return SeekerHitCount; }
@@ -244,6 +272,14 @@ private:
 
     UFUNCTION()
     void OnRep_DestroySkillState();
+
+    void UpdateDestroyProgressSound();
+
+    UFUNCTION(NetMulticast, Unreliable)
+    void MulticastPlayDestroyDoneSound(FVector_NetQuantize Location);
+
+    UPROPERTY(Transient)
+    UAudioComponent* DestroyProgressAudio = nullptr;
 
     // --- Seeker attack RPC/State ---
     UFUNCTION(Server, Reliable)

@@ -24,6 +24,7 @@
 #include "VolumeSettingsWidget.h"
 #include "HitFlashWidget.h"
 #include "EliminationNoticeWidget.h"
+#include "HideCameraShakes.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
@@ -220,6 +221,14 @@ void AMyPlayerController::ClientPlayHitFlash_Implementation(bool bEliminated)
     }
 
     HitFlashWidget->Play(bEliminated ? 1.0f : 0.8f, bEliminated ? 1.4f : 0.7f);
+
+    // 맞은 본인 카메라만 흔든다
+    if (PlayerCameraManager)
+    {
+        PlayerCameraManager->StartCameraShake(bEliminated
+            ? UEliminatedCameraShake::StaticClass()
+            : UHitCameraShake::StaticClass());
+    }
 }
 
 void AMyPlayerController::ClientShowEliminationNotice_Implementation(const FString& RunnerName, int32 RemainingRunners)

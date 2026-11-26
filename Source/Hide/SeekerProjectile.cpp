@@ -13,6 +13,8 @@
 #include "MyCharacter.h"
 #include "PropBase.h"
 #include "MyGameState.h"
+#include "HideCameraShakes.h"
+#include "GameFramework/PlayerController.h"
 
 ASeekerProjectile::ASeekerProjectile()
 {
@@ -84,6 +86,19 @@ void ASeekerProjectile::EndPlay(const EEndPlayReason::Type EndPlayReason)
     Super::EndPlay(EndPlayReason);
 }
 
+namespace
+{
+    // 러너를 맞혔을 때 쏜 술래 화면을 살짝 흔든다(맞혔다는 손맛)
+    void ShakeShooterCamera(const AActor* Projectile)
+    {
+        const APawn* Shooter = Projectile ? Projectile->GetInstigator() : nullptr;
+        if (APlayerController* PC = Shooter ? Cast<APlayerController>(Shooter->GetController()) : nullptr)
+        {
+            PC->ClientStartCameraShake(USeekerImpactCameraShake::StaticClass());
+        }
+    }
+}
+
 void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, FVector, const FHitResult& Hit)
 {
@@ -99,6 +114,8 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
 
         if (bIsRunnerTarget)
         {
+            ShakeShooterCamera(this);
+
             if (APropBase* PossessedProp = HitChar->GetPossessedProp())
             {
                 DestroyHitProp(PossessedProp);
@@ -116,6 +133,15 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
 
     if (APropBase* Prop = Cast<APropBase>(OtherActor))
     {
+        // 러너가 빙의 중인 프롭을 맞힌 경우에만(빈 프롭은 흔들지 않음)
+        if (const AMyCharacter* Possessor = Prop->GetClaimingCharacter())
+        {
+            if (!Possessor->IsSeeker() && !Possessor->IsEliminated())
+            {
+                ShakeShooterCamera(this);
+            }
+        }
+
         MulticastSpawnImpactEffect(true, Hit.ImpactPoint, Hit.ImpactNormal);
         DestroyHitProp(Prop);
         Destroy();

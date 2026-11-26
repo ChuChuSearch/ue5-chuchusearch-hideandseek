@@ -6,6 +6,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "PropBase.h"
+#include "HideCameraShakes.h"
 
 #include "Components/AudioComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -991,6 +992,12 @@ void AMyCharacter::FinishDestroyPropSkill()
     }
 
     MulticastPlayDestroyDoneSound(Target->GetActorLocation());
+
+    // 파괴를 끝낸 술래 화면만 살짝 흔들어 손맛을 준다
+    if (APlayerController* SeekerPC = Cast<APlayerController>(GetController()))
+    {
+        SeekerPC->ClientStartCameraShake(USeekerImpactCameraShake::StaticClass());
+    }
 
     Target->Destroy();
 

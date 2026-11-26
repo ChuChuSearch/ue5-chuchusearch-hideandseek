@@ -33,12 +33,34 @@
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Framework/Application/SlateApplication.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 
 AMyPlayerController::AMyPlayerController()
 {
     bShowMouseCursor = true;
     bEnableClickEvents = true;
     bEnableMouseOverEvents = true;
+
+    // 치트 신호기 빛기둥(패키징 시 같이 포함되도록 여기서 직접 참조)
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BeaconMeshFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (BeaconMeshFinder.Succeeded())
+    {
+        ClueBeaconMesh = BeaconMeshFinder.Object;
+    }
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BeaconMaterialFinder(TEXT("/Game/Game/Materials/M_CheatBeacon.M_CheatBeacon"));
+    if (BeaconMaterialFinder.Succeeded())
+    {
+        ClueBeaconMaterial = BeaconMaterialFinder.Object;
+    }
+}
+
+void AMyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    DestroyClueCheatBeams();
+    Super::EndPlay(EndPlayReason);
 }
 
 void AMyPlayerController::BeginPlay()
@@ -121,6 +143,11 @@ void AMyPlayerController::SetupInputComponent()
         InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
         InputComponent->BindKey(EKeys::F10, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
         InputComponent->BindKey(EKeys::H, IE_Pressed, this, &AMyPlayerController::ToggleControlsGuide);
+
+#if !UE_BUILD_SHIPPING
+        // 치트: Ctrl+Shift+C 단서 위치/비밀번호 보기
+        InputComponent->BindKey(FInputChord(EKeys::C, true, true, false, false), IE_Pressed, this, &AMyPlayerController::ToggleClueCheat);
+#endif
     }
 }
 
@@ -393,6 +420,7 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
 
     UpdatePhaseSounds();
     UpdateControlsGuide();
+    UpdateClueCheat();
 
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
@@ -589,6 +617,180 @@ void AMyPlayerController::ClearOutline(AActor* ActorToClear)
     {
         Prim->SetRenderCustomDepth(true);
         Prim->SetCustomDepthStencilValue(0);
+    }
+}
+
+// ===== 치트: 단서 위치 / 비밀번호 보기 =====
+// 단서 데이터는 서버에만 있으므로 서버에 요청해서 받아온다. Shipping 빌드에서는 아무 것도 하지 않는다.
+
+void AMyPlayerController::ToggleClueCheat()
+{
+#if !UE_BUILD_SHIPPING
+    if (bClueCheatOn)
+    {
+        bClueCheatOn = false;
+        ClearClueCheatOutlines();
+        DestroyClueCheatBeams();
+        ClueCheatProps.Reset();
+        ClueCheatCode.Reset();
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Silver, TEXT("[치트] 단서 보기 끔"));
+        }
+        return;
+    }
+
+    ServerRequestClueCheat();
+#endif
+}
+
+void AMyPlayerController::ServerRequestClueCheat_Implementation()
+{
+#if !UE_BUILD_SHIPPING
+    AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (!GS)
+    {
+        return;
+    }
+
+    TArray<APropBase*> ClueProps;
+    TArray<int32> Code;
+    GS->GetClueCheatInfo_Server(ClueProps, Code);
+
+    UE_LOG(LogTemp, Warning, TEXT("[Cheat] %s requested clue info: %d props, code length %d"),
+        *GetNameSafe(PlayerState), ClueProps.Num(), Code.Num());
+
+    ClientReceiveClueCheat(ClueProps, Code);
+#endif
+}
+
+void AMyPlayerController::ClientReceiveClueCheat_Implementation(const TArray<APropBase*>& ClueProps, const TArray<int32>& Code)
+{
+#if !UE_BUILD_SHIPPING
+    ClearClueCheatOutlines();
+    DestroyClueCheatBeams();
+
+    ClueCheatProps.Reset();
+    for (APropBase* Prop : ClueProps)
+    {
+        if (!Prop)
+        {
+            continue;
+        }
+
+        ClueCheatProps.Add(Prop);
+
+        // 이 플레이어 화면에만 존재하는 빛기둥(복제되지 않는 로컬 컴포넌트).
+        // PlayerController는 항상 숨김 액터라 그 컴포넌트는 그려지지 않으므로 프롭 액터에 붙여 만든다.
+        UStaticMeshComponent* Beam = nullptr;
+        if (ClueBeaconMesh && ClueBeaconMaterial)
+        {
+            Beam = NewObject<UStaticMeshComponent>(Prop, NAME_None, RF_Transient);
+            Beam->SetStaticMesh(ClueBeaconMesh);
+            Beam->SetMaterial(0, ClueBeaconMaterial);
+            Beam->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Beam->SetCastShadow(false);
+            Beam->SetUsingAbsoluteLocation(true);
+            Beam->SetUsingAbsoluteRotation(true);
+            Beam->SetUsingAbsoluteScale(true);
+            // 기본 원기둥은 지름 100, 높이 100, 중심이 가운데
+            Beam->SetWorldScale3D(FVector(ClueBeaconWidth / 100.f, ClueBeaconWidth / 100.f, ClueBeaconHeight / 100.f));
+            Beam->RegisterComponent();
+        }
+        ClueCheatBeams.Add(Beam);
+    }
+    ClueCheatCode = Code;
+    bClueCheatOn = true;
+
+    UpdateClueCheat();
+#endif
+}
+
+void AMyPlayerController::UpdateClueCheat()
+{
+#if !UE_BUILD_SHIPPING
+    if (!bClueCheatOn || !IsLocalController())
+    {
+        return;
+    }
+
+    // 마우스 올림 테두리가 지울 수 있으므로 매 프레임 다시 칠한다
+    int32 Remaining = 0;
+    for (int32 Index = 0; Index < ClueCheatProps.Num(); ++Index)
+    {
+        APropBase* Prop = ClueCheatProps[Index].Get();
+        UPrimitiveComponent* Prim = Prop ? Prop->GetStaticMesh() : nullptr;
+        UStaticMeshComponent* Beam = ClueCheatBeams.IsValidIndex(Index) ? ClueCheatBeams[Index].Get() : nullptr;
+
+        if (!Prim)
+        {
+            // 프롭이 부서졌으면 빛기둥도 치운다(프롭과 함께 이미 사라졌을 수도 있음)
+            if (IsValid(Beam))
+            {
+                Beam->DestroyComponent();
+            }
+            if (ClueCheatBeams.IsValidIndex(Index))
+            {
+                ClueCheatBeams[Index] = nullptr;
+            }
+            continue;
+        }
+
+        ++Remaining;
+        Prim->SetRenderCustomDepth(true);
+        Prim->SetCustomDepthStencilValue(ClueCheatStencil);
+
+        // 프롭이 움직일 수 있으니 매 프레임 위치를 맞춘다(기둥 아래쪽 끝 = 프롭 중심)
+        if (Beam)
+        {
+            const FVector Base = Prim->Bounds.Origin;
+            Beam->SetWorldLocation(Base + FVector(0.f, 0.f, ClueBeaconHeight * 0.5f));
+        }
+    }
+
+    if (GEngine)
+    {
+        FString CodeText;
+        for (const int32 Number : ClueCheatCode)
+        {
+            CodeText += FString::Printf(TEXT("%d "), Number);
+        }
+        if (CodeText.IsEmpty())
+        {
+            CodeText = TEXT("(없음)");
+        }
+
+        // 같은 키로 매 프레임 덮어써서 켜져 있는 동안 계속 보이게 한다
+        const uint64 MessageKey = 0x434C5545; // "CLUE"
+        GEngine->AddOnScreenDebugMessage(MessageKey, 0.5f, FColor::Yellow,
+            FString::Printf(TEXT("[치트] 비밀번호: %s | 남은 단서 프롭: %d개 (Ctrl+Shift+C로 끄기)"), *CodeText.TrimEnd(), Remaining));
+    }
+#endif
+}
+
+void AMyPlayerController::DestroyClueCheatBeams()
+{
+    for (UStaticMeshComponent* Beam : ClueCheatBeams)
+    {
+        if (IsValid(Beam))
+        {
+            Beam->DestroyComponent();
+        }
+    }
+    ClueCheatBeams.Reset();
+}
+
+void AMyPlayerController::ClearClueCheatOutlines()
+{
+    for (const TWeakObjectPtr<APropBase>& PropPtr : ClueCheatProps)
+    {
+        APropBase* Prop = PropPtr.Get();
+        if (!Prop || Prop == OutlinedActor)
+        {
+            continue;
+        }
+
+        ClearOutline(Prop);
     }
 }
 

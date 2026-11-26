@@ -95,6 +95,36 @@ void AMyGameState::SelectRandomClueProps()
     ForceNetUpdate();
 }
 
+void AMyGameState::GetClueCheatInfo_Server(TArray<APropBase*>& OutClueProps, TArray<int32>& OutCode) const
+{
+    OutClueProps.Reset();
+    OutCode.Reset();
+
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    // 정답은 ClueNumbers 순서 그대로(SubmitPasswordCode가 자리별로 비교)
+    const int32 CodeLength = FMath::Min(PasswordCodeLength, ClueNumbers.Num());
+    for (int32 Index = 0; Index < CodeLength; ++Index)
+    {
+        OutCode.Add(ClueNumbers[Index]);
+    }
+
+    // 이미 부서진 프롭은 월드에 없으므로 빠진다
+    TArray<AActor*> FoundProps;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), APropBase::StaticClass(), FoundProps);
+    for (AActor* Actor : FoundProps)
+    {
+        APropBase* Prop = Cast<APropBase>(Actor);
+        if (IsValid(Prop) && CluePropIds.Contains(Prop->GetPropId()))
+        {
+            OutClueProps.Add(Prop);
+        }
+    }
+}
+
 bool AMyGameState::DoesPropHaveClue(const FName& PropId) const
 {
     return CluePropIds.Contains(PropId);

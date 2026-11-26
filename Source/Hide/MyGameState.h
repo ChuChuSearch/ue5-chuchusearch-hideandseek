@@ -112,6 +112,9 @@ public:
     int32 GetPasswordCodeLength() const { return PasswordCodeLength; }
     void SetGameResult_Server(EFinalRole WinningRole);
 
+    // 치트(테스트용, 서버 전용): 단서가 배치된 프롭(아직 남아 있는 것)과 비밀번호 정답(자리 순서)
+    void GetClueCheatInfo_Server(TArray<APropBase*>& OutClueProps, TArray<int32>& OutCode) const;
+
 protected:
     // 파괴된 프롭 전체 목록은 서버 전용. 클라이언트에는 VisibleRespawnList와 개수만 보낸다.
     UPROPERTY()

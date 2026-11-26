@@ -26,6 +26,9 @@ class UHitFlashWidget;
 class UEliminationNoticeWidget;
 class UControlsGuideWidget;
 class UReturnCountdownWidget;
+class UStaticMesh;
+class UStaticMeshComponent;
+class UMaterialInterface;
 
 enum class EVolumeChannel : uint8
 {
@@ -43,6 +46,7 @@ public:
     AMyPlayerController();
 
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void PlayerTick(float DeltaTime) override;
     virtual void SetupInputComponent() override;
 
@@ -379,6 +383,47 @@ private:
 
     void UpdateControlsGuide();
     void ToggleControlsGuide();
+
+    // ===== 치트(테스트용, Shipping 빌드에서는 동작 안 함) =====
+    // Ctrl+Shift+C: 단서가 배치된 프롭 테두리 강조 + 비밀번호 정답 표시 (다시 누르면 끔)
+    void ToggleClueCheat();
+
+    UFUNCTION(Server, Reliable)
+    void ServerRequestClueCheat();
+
+    UFUNCTION(Client, Reliable)
+    void ClientReceiveClueCheat(const TArray<APropBase*>& ClueProps, const TArray<int32>& Code);
+
+    void UpdateClueCheat();
+    void ClearClueCheatOutlines();
+
+    void DestroyClueCheatBeams();
+
+    // 치트 강조에 쓸 커스텀 뎁스 스텐실 값. M_OutlineRGB_PP: 1 초록, 2 파랑, 3 빨강, 5 금색(치트 전용)
+    // 4는 BP_MyCharacter 메시가 쓰고 있어서 피한다.
+    UPROPERTY(EditDefaultsOnly, Category = "Cheat")
+    int32 ClueCheatStencil = 5;
+
+    // 신호기 빛기둥: 단서 프롭 위치에서 하늘로 뻗는 기둥. 치트를 쓴 플레이어 화면에만 만든다(복제 안 함).
+    UPROPERTY(EditDefaultsOnly, Category = "Cheat")
+    TObjectPtr<UStaticMesh> ClueBeaconMesh = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Cheat")
+    TObjectPtr<UMaterialInterface> ClueBeaconMaterial = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Cheat")
+    float ClueBeaconHeight = 20000.f;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Cheat")
+    float ClueBeaconWidth = 60.f;
+
+    bool bClueCheatOn = false;
+    TArray<TWeakObjectPtr<APropBase>> ClueCheatProps;
+    TArray<int32> ClueCheatCode;
+
+    // ClueCheatProps와 같은 순서
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> ClueCheatBeams;
 };
 
 

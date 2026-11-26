@@ -22,6 +22,7 @@
 #include "Components/PrimitiveComponent.h"
 #include "TimerManager.h"
 #include "VolumeSettingsWidget.h"
+#include "HitFlashWidget.h"
 #include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
@@ -193,6 +194,31 @@ void AMyPlayerController::ApplyVolumeSettings()
     {
         UGameplayStatics::SetSoundMixClassOverride(this, VolumeMix, SFXClass, VolumeMaster * VolumeSFX, 1.f, 0.f, true);
     }
+}
+
+void AMyPlayerController::ClientPlayHitFlash_Implementation(bool bEliminated)
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (!HitFlashWidget)
+    {
+        HitFlashWidget = CreateWidget<UHitFlashWidget>(this, UHitFlashWidget::StaticClass());
+    }
+    if (!HitFlashWidget)
+    {
+        return;
+    }
+
+    if (!HitFlashWidget->IsInViewport())
+    {
+        // 게임 UI 위, 설정 창(1000) 아래
+        HitFlashWidget->AddToViewport(900);
+    }
+
+    HitFlashWidget->Play(bEliminated ? 1.0f : 0.8f, bEliminated ? 1.4f : 0.7f);
 }
 
 void AMyPlayerController::ToggleSettingsMenu()

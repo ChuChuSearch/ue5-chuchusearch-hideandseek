@@ -22,6 +22,7 @@ class UAudioComponent;
 class USoundClass;
 class USoundMix;
 class UVolumeSettingsWidget;
+class UHitFlashWidget;
 
 enum class EVolumeChannel : uint8
 {
@@ -95,6 +96,10 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientSetForcedSwapWarning(bool bShowWarning, double RemainingSeconds);
+
+    // 맞았을 때 화면 가장자리 빨간 효과(맞은 본인만). 탈락이면 더 진하고 길게.
+    UFUNCTION(Client, Unreliable)
+    void ClientPlayHitFlash(bool bEliminated);
 
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
@@ -331,6 +336,9 @@ private:
     void LoadVolumeSettings();
     void SaveVolumeSettings() const;
     void ApplyVolumeSettings();
+
+    UPROPERTY(Transient)
+    UHitFlashWidget* HitFlashWidget = nullptr;
 };
 
 

@@ -33,6 +33,9 @@ public:
     void HandleRunnerEliminated(AMyCharacter* EliminatedRunner);
     void HandleCodeVictory(EFinalRole WinningRole);
     void EndGameWithWinner(EFinalRole WinningRole);
+
+    // 탈락으로 게임이 끝날 때 탈락 소리/화면 효과를 볼 수 있게 결과를 잠깐 늦춘다
+    void EndGameWithWinnerDelayed(EFinalRole WinningRole, float DelaySeconds);
     void RegisterPhase1PossessedProp(APropBase* Prop);
     bool IsPhase1PossessedProp(const APropBase* Prop) const;
 
@@ -140,6 +143,16 @@ protected:
     void EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerState, bool bAllowGrace = true);
 
     FTimerHandle TH_GamePhase;
+    FTimerHandle TH_PendingResult;
+
+    // 마지막 러너 탈락 후 결과 화면까지 기다리는 시간(초). 0이면 즉시.
+    UPROPERTY(EditDefaultsOnly, Category = "Victory", meta = (ClampMin = "0.0"))
+    float EliminationResultDelaySeconds = 2.0f;
+
+    // 결과 대기 중에는 다른 종료(시간 만료 등)가 끼어들지 않게 막는다
+    bool bResultPending = false;
+    EFinalRole PendingWinner = EFinalRole::Seeker;
+    void FinishPendingResult();
     FTimerHandle TH_ReturnToWaitRoom;
     bool bReturningToWaitRoom = false;
     TSet<TWeakObjectPtr<APropBase>> Phase1PossessedProps;

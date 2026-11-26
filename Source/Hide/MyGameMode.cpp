@@ -400,7 +400,7 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
 
         if (!HasAnyActiveRunner())
         {
-            EndGameWithWinner(EFinalRole::Seeker);
+            EndGameWithWinnerDelayed(EFinalRole::Seeker, EliminationResultDelaySeconds);
         }
         return;
     }
@@ -420,7 +420,7 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
         UE_LOG(LogTemp, Warning, TEXT("HandleRunnerEliminated: GhostCharacterClass is not set."));
         if (!HasAnyActiveRunner())
         {
-            EndGameWithWinner(EFinalRole::Seeker);
+            EndGameWithWinnerDelayed(EFinalRole::Seeker, EliminationResultDelaySeconds);
         }
         return;
     }
@@ -441,7 +441,7 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
         UE_LOG(LogTemp, Warning, TEXT("HandleRunnerEliminated: Failed to spawn ghost character."));
         if (!HasAnyActiveRunner())
         {
-            EndGameWithWinner(EFinalRole::Seeker);
+            EndGameWithWinnerDelayed(EFinalRole::Seeker, EliminationResultDelaySeconds);
         }
         return;
     }
@@ -457,7 +457,7 @@ void AMyGameMode::HandleRunnerEliminated(AMyCharacter* EliminatedRunner)
 
     if (!HasAnyActiveRunner())
     {
-        EndGameWithWinner(EFinalRole::Seeker);
+        EndGameWithWinnerDelayed(EFinalRole::Seeker, EliminationResultDelaySeconds);
     }
 }
 
@@ -466,9 +466,35 @@ void AMyGameMode::HandleCodeVictory(EFinalRole WinningRole)
     EndGameWithWinner(WinningRole);
 }
 
+void AMyGameMode::EndGameWithWinnerDelayed(EFinalRole WinningRole, float DelaySeconds)
+{
+    if (!HasAuthority() || bGameEnded || bResultPending)
+    {
+        return;
+    }
+
+    if (DelaySeconds <= 0.f)
+    {
+        EndGameWithWinner(WinningRole);
+        return;
+    }
+
+    // 승패는 지금 확정: 페이즈 타이머를 멈춰 대기 중에 시간 만료로 결과가 바뀌지 않게 한다
+    bResultPending = true;
+    PendingWinner = WinningRole;
+    GetWorldTimerManager().ClearTimer(TH_GamePhase);
+    GetWorldTimerManager().SetTimer(TH_PendingResult, this, &AMyGameMode::FinishPendingResult, DelaySeconds, false);
+}
+
+void AMyGameMode::FinishPendingResult()
+{
+    bResultPending = false;
+    EndGameWithWinner(PendingWinner);
+}
+
 void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
 {
-    if (!HasAuthority() || bGameEnded)
+    if (!HasAuthority() || bGameEnded || bResultPending)
     {
         return;
     }

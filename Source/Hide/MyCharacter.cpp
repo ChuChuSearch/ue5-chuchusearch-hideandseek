@@ -1226,6 +1226,12 @@ void AMyCharacter::ApplySeekerHit_Server()
     const bool bWillBeEliminated = SeekerHitCount >= MaxSeekerHitsBeforeElimination;
     PlayRunnerHitSounds_Server(bWillBeEliminated);
 
+    // 맞은 본인 화면에 빨간 테두리 효과(탈락 처리로 컨트롤러가 바뀌기 전에 보낸다)
+    if (AMyPlayerController* VictimPC = Cast<AMyPlayerController>(GetController()))
+    {
+        VictimPC->ClientPlayHitFlash(bWillBeEliminated);
+    }
+
     if (bWillBeEliminated)
     {
         SetEliminated_Server(true);

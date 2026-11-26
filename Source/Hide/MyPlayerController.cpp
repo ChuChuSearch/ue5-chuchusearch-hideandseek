@@ -21,7 +21,8 @@
 #include "Sound/SoundBase.h"
 #include "Components/PrimitiveComponent.h"
 #include "TimerManager.h"
-#include "VolumeSettingsWidget.h"
+#include "SettingsWidget.h"
+#include "GameFramework/GameUserSettings.h"
 #include "HitFlashWidget.h"
 #include "EliminationNoticeWidget.h"
 #include "HideCameraShakes.h"
@@ -357,7 +358,7 @@ void AMyPlayerController::ToggleSettingsMenu()
         return;
     }
 
-    SettingsWidget = CreateWidget<UVolumeSettingsWidget>(this, UVolumeSettingsWidget::StaticClass());
+    SettingsWidget = CreateWidget<USettingsWidget>(this, USettingsWidget::StaticClass());
     if (!SettingsWidget)
     {
         return;
@@ -369,11 +370,32 @@ void AMyPlayerController::ToggleSettingsMenu()
     bSettingsPrevShowCursor = bShowMouseCursor;
     bShowMouseCursor = true;
 
-    FInputModeGameAndUI Mode;
+    // 설정 창을 만지는 동안 게임 입력(클릭 공격, 이동 등)이 들어가지 않게 UI 전용 입력으로 바꾼다.
+    // 누르고 있던 공격(길게 누르기)도 취소한다.
+    CancelAttackInput();
+    FlushPressedKeys();
+
+    FInputModeUIOnly Mode;
     Mode.SetWidgetToFocus(SettingsWidget->TakeWidget());
     Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-    Mode.SetHideCursorDuringCapture(false);
     SetInputMode(Mode);
+}
+
+void AMyPlayerController::CancelAttackInput()
+{
+    GetWorldTimerManager().ClearTimer(TH_AttackHold);
+
+    if (bHoldTriggered)
+    {
+        if (AMyCharacter* MC = GetMyCharacter())
+        {
+            MC->RequestCancelDestroyPropSkill();
+        }
+        HideDestroyProgressUI();
+    }
+
+    bHoldTriggered = false;
+    AttackHoldTarget = nullptr;
 }
 
 void AMyPlayerController::CloseSettingsMenu()
@@ -383,9 +405,21 @@ void AMyPlayerController::CloseSettingsMenu()
         return;
     }
 
+    // 유지를 누르지 않은 그래픽 변경은 되돌린다
+    SettingsWidget->HandleClosing();
     SettingsWidget->RemoveFromParent();
     SettingsWidget = nullptr;
     SaveVolumeSettings();
+
+    // 설정 창에서 마우스를 떼는 순간이 게임 클릭으로 이어지지 않게
+    CancelAttackInput();
+    FlushPressedKeys();
+
+    // 그래픽 설정(렌더링 배율 슬라이더는 드래그 중 저장하지 않으므로 여기서 저장)
+    if (UGameUserSettings* GameSettings = GEngine ? GEngine->GetGameUserSettings() : nullptr)
+    {
+        GameSettings->SaveSettings();
+    }
 
     // 열기 전 상태로 되돌린다(게임 중이면 커서 숨기고 게임 입력만)
     bShowMouseCursor = bSettingsPrevShowCursor;
@@ -1100,6 +1134,12 @@ void AMyPlayerController::CloseWaitRoomUI()
 
 void AMyPlayerController::OnAttackPressed(const FInputActionValue& Value)
 {
+    // 설정 창이 열려 있으면 클릭은 UI 조작이다(투사체 발사 금지)
+    if (SettingsWidget)
+    {
+        return;
+    }
+
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
         if (Ghost->IsPlacementMode())
@@ -1147,6 +1187,12 @@ void AMyPlayerController::HandleAttackHoldTriggered()
 
 void AMyPlayerController::OnAttackReleased(const FInputActionValue& Value)
 {
+    if (SettingsWidget)
+    {
+        CancelAttackInput();
+        return;
+    }
+
     if (GetWorld())
     {
         GetWorldTimerManager().ClearTimer(TH_AttackHold);

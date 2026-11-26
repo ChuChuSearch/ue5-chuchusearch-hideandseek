@@ -21,7 +21,7 @@ class USoundBase;
 class UAudioComponent;
 class USoundClass;
 class USoundMix;
-class UVolumeSettingsWidget;
+class USettingsWidget;
 class UHitFlashWidget;
 class UEliminationNoticeWidget;
 class UControlsGuideWidget;
@@ -55,6 +55,9 @@ public:
     void SetVolumeSetting(EVolumeChannel Channel, float Value);
     void ToggleSettingsMenu();
     void CloseSettingsMenu();
+
+    // 누르고 있던 공격 입력(길게 누르기 포함)을 취소한다. 설정 창을 열고 닫을 때 사용.
+    void CancelAttackInput();
 
     UFUNCTION(BlueprintCallable)
     void UI_RequestStartGame();
@@ -347,7 +350,7 @@ private:
     USoundMix* VolumeMix = nullptr;
 
     UPROPERTY(Transient)
-    UVolumeSettingsWidget* SettingsWidget = nullptr;
+    USettingsWidget* SettingsWidget = nullptr;
 
     float VolumeMaster = 1.f;
     float VolumeMusic = 1.f;

@@ -106,7 +106,7 @@ void UControlsGuideWidget::BuildTree()
     CardBox->AddChildToVerticalBox(Rows);
 
     UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Footer"));
-    Footer->SetText(FText::FromString(TEXT("H 조작법 열기/닫기 · F10 소리 설정")));
+    Footer->SetText(FText::FromString(TEXT("H 조작법 열기/닫기 · F10 설정")));
     Footer->SetFont(MakeFont(false, 12));
     Footer->SetColorAndOpacity(FSlateColor(LabelColor.CopyWithNewOpacity(0.6f)));
     if (UVerticalBoxSlot* S = CardBox->AddChildToVerticalBox(Footer))

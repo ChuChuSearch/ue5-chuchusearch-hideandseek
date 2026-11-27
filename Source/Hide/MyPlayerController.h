@@ -6,6 +6,7 @@
 #include "Blueprint/UserWidget.h"
 #include "MyPlayerState.h"
 #include "MyGameState.h"
+#include "LobbyGameSettings.h"
 #include "MyPlayerController.generated.h"
 
 class UInputMappingContext;
@@ -30,6 +31,7 @@ class UCrosshairWidget;
 class UScoreboardWidget;
 class UResultScoreWidget;
 class ULobbyPanelWidget;
+class ULobbySettingsWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
@@ -75,11 +77,22 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientReceiveLobbyChat(const FString& SenderName, const FString& Message, bool bSystem);
 
-    // 대기실 최대 인원(서버 게임 모드 값). 참가자 목록에 "N/최대"로 표시. 모르면 0.
+    // ===== 방장 게임 설정 =====
+    // 서버가 지금 설정을 알려 준다(접속할 때, 바뀔 때)
     UFUNCTION(Client, Reliable)
-    void ClientSetLobbyMaxPlayers(int32 InMaxPlayers);
+    void ClientSetLobbyGameSettings(const FLobbyGameSettings& InSettings);
 
-    int32 GetLobbyMaxPlayers() const { return LobbyMaxPlayers; }
+    // 방장이 설정을 바꾼다(bResetToDefaults면 블루프린트 기본값으로). 서버에서 방장인지 다시 확인한다.
+    UFUNCTION(Server, Reliable)
+    void ServerSetLobbyGameSettings(const FLobbyGameSettings& InSettings, bool bResetToDefaults);
+
+    bool HasLobbyGameSettings() const { return bHasLobbyGameSettings; }
+    const FLobbyGameSettings& GetLobbyGameSettings() const { return LobbyGameSettings; }
+
+    // 참가자 목록 "N/최대" 표시용. 아직 모르면 0.
+    int32 GetLobbyMaxPlayers() const { return bHasLobbyGameSettings ? LobbyGameSettings.MaxPlayers : 0; }
+
+    void ToggleLobbySettingsWindow();
 
     // 역할 지망 바꾸기(대기실 역할 선택 버튼에서)
     void RequestSetPreference(ERolePreference InPreference);
@@ -223,7 +236,12 @@ private:
     UPROPERTY(Transient)
     ULobbyPanelWidget* LobbyPanelWidget = nullptr;
 
-    int32 LobbyMaxPlayers = 0;
+    FLobbyGameSettings LobbyGameSettings;
+    bool bHasLobbyGameSettings = false;
+
+    // 대기실 "게임 설정" 창
+    UPROPERTY(Transient)
+    ULobbySettingsWidget* LobbySettingsWidget = nullptr;
 
     void ShowWaitRoomUI();
 

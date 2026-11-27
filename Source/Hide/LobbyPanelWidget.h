@@ -40,6 +40,9 @@ private:
     UFUNCTION()
     void OnSettingsClicked();
 
+    UFUNCTION()
+    void OnGameSettingsClicked();
+
     void SubmitChat();
 
     UFUNCTION()

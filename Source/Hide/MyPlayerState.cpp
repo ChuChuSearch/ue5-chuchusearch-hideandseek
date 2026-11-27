@@ -71,6 +71,15 @@ void AMyPlayerState::ServerSetReady_Implementation(bool bNewReady)
     }
 }
 
+void AMyPlayerState::ResetReady_Server()
+{
+    if (HasAuthority() && bReady)
+    {
+        bReady = false;
+        ForceNetUpdate();
+    }
+}
+
 void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPreference)
 {
     if (!HasAuthority()) return;

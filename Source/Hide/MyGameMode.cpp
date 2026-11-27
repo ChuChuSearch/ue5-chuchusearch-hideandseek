@@ -9,6 +9,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/NetConnection.h"
 #include "EngineUtils.h"
+#include "LobbyGameSettings.h"
+#include "Engine/GameInstance.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -27,8 +29,33 @@ AMyGameMode::AMyGameMode()
     }
 }
 
+void AMyGameMode::FillPhaseSettings(FLobbyGameSettings& OutSettings) const
+{
+    OutSettings.HideTimeSeconds = FMath::RoundToInt(HideTimeSeconds);
+    OutSettings.Phase1Seconds = FMath::RoundToInt(Phase1Seconds);
+    OutSettings.ForcedSwapSeconds = FMath::RoundToInt(ForcedSwapSeconds);
+    OutSettings.Phase2Seconds = FMath::RoundToInt(Phase2Seconds);
+    OutSettings.FeverTimeSeconds = FMath::RoundToInt(FeverTimeSeconds);
+}
+
 void AMyGameMode::BeginPlay()
 {
+    // 방장이 대기실에서 정한 단계 시간으로 시작한다(대기실을 거치지 않고 바로 이 맵을 열면 블루프린트 값 그대로)
+    if (const ULobbySettingsSubsystem* Sub = GetGameInstance() ? GetGameInstance()->GetSubsystem<ULobbySettingsSubsystem>() : nullptr)
+    {
+        if (Sub->IsInitialized())
+        {
+            const FLobbyGameSettings& S = Sub->GetSettings();
+            HideTimeSeconds = S.HideTimeSeconds;
+            Phase1Seconds = S.Phase1Seconds;
+            ForcedSwapSeconds = S.ForcedSwapSeconds;
+            Phase2Seconds = S.Phase2Seconds;
+            FeverTimeSeconds = S.FeverTimeSeconds;
+            UE_LOG(LogTemp, Log, TEXT("Game timeline from lobby settings: hide=%d p1=%d swap=%d p2=%d fever=%d"),
+                S.HideTimeSeconds, S.Phase1Seconds, S.ForcedSwapSeconds, S.Phase2Seconds, S.FeverTimeSeconds);
+        }
+    }
+
     Super::BeginPlay();
 
     if (HasAuthority() && bAutoStartGameTimeline)

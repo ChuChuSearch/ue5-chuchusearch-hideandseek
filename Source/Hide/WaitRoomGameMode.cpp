@@ -5,12 +5,21 @@
 #include "GameFramework/PlayerState.h"
 #include "MyPlayerController.h"
 #include "TimerManager.h"
+#include "MyGameMode.h"
+#include "Kismet/GameplayStatics.h"
+#include "Engine/GameInstance.h"
 
 AWaitRoomGameMode::AWaitRoomGameMode()
 {
     PlayerStateClass = AMyPlayerState::StaticClass();
     DefaultPawnClass = nullptr;
     bUseSeamlessTravel = true;
+}
+
+void AWaitRoomGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
+{
+    Super::InitGame(MapName, Options, ErrorMessage);
+    InitializeLobbySettingsDefaults();
 }
 
 void AWaitRoomGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
@@ -21,10 +30,11 @@ void AWaitRoomGameMode::PreLogin(const FString& Options, const FString& Address,
         return;
     }
 
-    if (MaxLobbyPlayers > 0 && GetNumPlayers() >= MaxLobbyPlayers)
+    const int32 MaxPlayers = GetMaxLobbyPlayers();
+    if (MaxPlayers > 0 && GetNumPlayers() >= MaxPlayers)
     {
         ErrorMessage = TEXT("Server full");
-        UE_LOG(LogTemp, Log, TEXT("Rejected lobby login from %s: lobby full (%d/%d)."), *Address, GetNumPlayers(), MaxLobbyPlayers);
+        UE_LOG(LogTemp, Log, TEXT("Rejected lobby login from %s: lobby full (%d/%d)."), *Address, GetNumPlayers(), MaxPlayers);
     }
 }
 
@@ -35,11 +45,135 @@ void AWaitRoomGameMode::PostLogin(APlayerController* NewPlayer)
     RegisterLobbyJoinOrder(NewPlayer ? NewPlayer->GetPlayerState<AMyPlayerState>() : nullptr);
     EnsureHost();
 
-    // 참가자 목록에 "N/최대" 로 보여 주도록 최대 인원을 알려 준다
-    if (AMyPlayerController* MPC = Cast<AMyPlayerController>(NewPlayer))
+    // 참가자 목록("N/최대")과 게임 설정 창에 보여 줄 지금 설정을 알려 준다
+    SendLobbyGameSettings(NewPlayer);
+}
+
+// ===== 방장 게임 설정 =====
+
+ULobbySettingsSubsystem* AWaitRoomGameMode::GetSettingsSubsystem() const
+{
+    const UGameInstance* GI = GetGameInstance();
+    return GI ? GI->GetSubsystem<ULobbySettingsSubsystem>() : nullptr;
+}
+
+void AWaitRoomGameMode::InitializeLobbySettingsDefaults()
+{
+    ULobbySettingsSubsystem* Sub = GetSettingsSubsystem();
+    if (!Sub || Sub->IsInitialized())
     {
-        MPC->ClientSetLobbyMaxPlayers(MaxLobbyPlayers);
+        return;
     }
+
+    FLobbyGameSettings Defaults;
+    Defaults.MaxPlayers = MaxLobbyPlayers;
+
+    // 게임 맵에서 쓸 게임 모드(…?game=…_C)의 블루프린트 기본값에서 단계 시간을 읽는다
+    const FString URL = BuildGameTravelURL();
+    int32 OptionStart = INDEX_NONE;
+    if (URL.FindChar(TEXT('?'), OptionStart))
+    {
+        const FString GameClassPath = UGameplayStatics::ParseOption(URL.Mid(OptionStart), TEXT("game"));
+        if (UClass* GameClass = GameClassPath.IsEmpty() ? nullptr : LoadClass<AMyGameMode>(nullptr, *GameClassPath))
+        {
+            GameClass->GetDefaultObject<AMyGameMode>()->FillPhaseSettings(Defaults);
+        }
+    }
+
+    Sub->InitializeDefaults(Defaults);
+}
+
+FLobbyGameSettings AWaitRoomGameMode::GetLobbyGameSettings() const
+{
+    if (const ULobbySettingsSubsystem* Sub = GetSettingsSubsystem())
+    {
+        return Sub->GetSettings();
+    }
+
+    FLobbyGameSettings Fallback;
+    Fallback.MaxPlayers = MaxLobbyPlayers;
+    return Fallback;
+}
+
+int32 AWaitRoomGameMode::GetMaxLobbyPlayers() const
+{
+    return GetLobbyGameSettings().MaxPlayers;
+}
+
+void AWaitRoomGameMode::SendLobbyGameSettings(APlayerController* PC) const
+{
+    if (AMyPlayerController* MPC = Cast<AMyPlayerController>(PC))
+    {
+        MPC->ClientSetLobbyGameSettings(GetLobbyGameSettings());
+    }
+}
+
+void AWaitRoomGameMode::BroadcastLobbyGameSettings()
+{
+    if (!GetWorld())
+    {
+        return;
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        SendLobbyGameSettings(It->Get());
+    }
+}
+
+void AWaitRoomGameMode::HandleSetLobbyGameSettings(APlayerController* RequestPC, const FLobbyGameSettings& NewSettings, bool bResetToDefaults)
+{
+    ULobbySettingsSubsystem* Sub = GetSettingsSubsystem();
+    const AMyPlayerState* RequestPS = RequestPC ? RequestPC->GetPlayerState<AMyPlayerState>() : nullptr;
+    if (!HasAuthority() || !Sub || !RequestPS || !RequestPS->IsHost())
+    {
+        return;
+    }
+
+    FLobbyGameSettings Wanted = FLobbySettingRules::Sanitize(bResetToDefaults ? Sub->GetDefaults() : NewSettings);
+
+    // 지금 들어와 있는 사람보다 최대 인원을 줄일 수는 없다
+    const int32 CurrentPlayers = GameState ? GameState->PlayerArray.Num() : 0;
+    if (Wanted.MaxPlayers < CurrentPlayers)
+    {
+        Wanted.MaxPlayers = FLobbySettingRules::SnapToOption(ELobbySettingField::MaxPlayers, CurrentPlayers);
+        if (Wanted.MaxPlayers < CurrentPlayers)
+        {
+            Wanted.MaxPlayers = Sub->GetSettings().MaxPlayers;
+        }
+    }
+
+    if (Wanted == Sub->GetSettings())
+    {
+        // 바뀐 게 없어도(예: 인원 때문에 막힘) 화면을 맞추도록 다시 보낸다
+        SendLobbyGameSettings(RequestPC);
+        return;
+    }
+
+    Sub->SetSettings(Wanted);
+    BroadcastLobbyGameSettings();
+
+    // 조건이 바뀌었으니 준비를 모두 푼다
+    if (GameState)
+    {
+        for (APlayerState* PS : GameState->PlayerArray)
+        {
+            if (AMyPlayerState* MPS = Cast<AMyPlayerState>(PS))
+            {
+                MPS->ResetReady_Server();
+            }
+        }
+    }
+
+    // 연달아 바꾸는 동안에는 미루다가 마지막에 한 번만 알린다
+    GetWorldTimerManager().SetTimer(TH_SettingsChangedNotice, this, &AWaitRoomGameMode::AnnounceSettingsChanged, 1.5f, false);
+}
+
+void AWaitRoomGameMode::AnnounceSettingsChanged()
+{
+    const FLobbyGameSettings S = GetLobbyGameSettings();
+    BroadcastLobbyChat(FString(), FString::Printf(TEXT("방장이 게임 설정을 바꿨어요 (최대 %d명 · 전체 %s) 준비를 다시 해 주세요"),
+        S.MaxPlayers, *FLobbySettingRules::FormatTime(S.GetTotalSeconds())), true);
 }
 
 void AWaitRoomGameMode::Logout(AController* Exiting)
@@ -171,7 +305,7 @@ void AWaitRoomGameMode::HandleSeamlessTravelPlayer(AController*& C)
     {
         RegisterLobbyJoinOrder(PC->GetPlayerState<AMyPlayerState>());
         PC->ClientEnterWaitRoomUI();
-        PC->ClientSetLobbyMaxPlayers(MaxLobbyPlayers);
+        SendLobbyGameSettings(PC);
     }
 
     EnsureHost();
@@ -320,7 +454,8 @@ bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutF
         return Fail(TEXT("2명 이상 모여야 시작할 수 있어요"));
     }
 
-    if (MaxLobbyPlayers > 0 && PlayerCount > MaxLobbyPlayers) return false;
+    const int32 MaxPlayers = GetMaxLobbyPlayers();
+    if (MaxPlayers > 0 && PlayerCount > MaxPlayers) return false;
 
     // 방장을 뺀 모두가 준비해야 시작할 수 있다
     for (APlayerState* PS : GameState->PlayerArray)

@@ -184,7 +184,38 @@ void ULobbyPanelWidget::BuildTree()
     SettingsText->SetColorAndOpacity(FSlateColor(LabelColor));
     SettingsButton->SetContent(SettingsText);
     SettingsButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnSettingsClicked);
-    if (UOverlaySlot* S = Root->AddChildToOverlay(SettingsButton))
+
+    // 그 왼쪽에 게임 설정 버튼(단계 시간 / 최대 인원. 방장만 바꿀 수 있고 다른 사람은 보기만)
+    UButton* GameSettingsButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("GameSettingsButton"));
+    {
+        FButtonStyle Style = GameSettingsButton->GetStyle();
+        Style.SetNormal(RoundBox(AccentColor, 18.f, AccentDark, 3.f));
+        Style.SetHovered(RoundBox(AccentHover, 18.f, AccentDark, 3.f));
+        Style.SetPressed(RoundBox(AccentDark, 18.f, AccentDark, 3.f));
+        Style.SetNormalPadding(FMargin(18.f, 6.f, 18.f, 8.f));
+        Style.SetPressedPadding(FMargin(18.f, 7.f, 18.f, 7.f));
+        if (ClickSound)
+        {
+            FSlateSound Click;
+            Click.SetResourceObject(ClickSound);
+            Style.SetPressedSound(Click);
+        }
+        GameSettingsButton->SetStyle(Style);
+    }
+    UTextBlock* GameSettingsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GameSettingsText"));
+    GameSettingsText->SetText(FText::FromString(TEXT("게임 설정")));
+    GameSettingsText->SetFont(MakeFont(true, 16, AccentDark, 1));
+    GameSettingsText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+    GameSettingsButton->SetContent(GameSettingsText);
+    GameSettingsButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnGameSettingsClicked);
+
+    UHorizontalBox* TopButtons = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("TopButtons"));
+    if (UHorizontalBoxSlot* S = TopButtons->AddChildToHorizontalBox(GameSettingsButton))
+    {
+        S->SetPadding(FMargin(0.f, 0.f, 10.f, 0.f));
+    }
+    TopButtons->AddChildToHorizontalBox(SettingsButton);
+    if (UOverlaySlot* S = Root->AddChildToOverlay(TopButtons))
     {
         S->SetHorizontalAlignment(HAlign_Right);
         S->SetVerticalAlignment(VAlign_Top);
@@ -618,6 +649,14 @@ void ULobbyPanelWidget::AddChatLine(const FString& SenderName, const FString& Me
 
     // 새 줄이 레이아웃에 잡힌 다음 맨 아래로
     bScrollToEndPending = true;
+}
+
+void ULobbyPanelWidget::OnGameSettingsClicked()
+{
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
+    {
+        PC->ToggleLobbySettingsWindow();
+    }
 }
 
 void ULobbyPanelWidget::OnSettingsClicked()

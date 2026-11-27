@@ -127,6 +127,9 @@ public:
     UFUNCTION(Server, Reliable)
     void ServerSetReady(bool bNewReady);
 
+    // 서버 전용: 방장이 게임 설정을 바꾸면 모두의 준비를 푼다
+    void ResetReady_Server();
+
     bool IsInWaitRoom_Server() const;
 
     void ExportReconnectData(FReconnectPlayerData& OutData) const;

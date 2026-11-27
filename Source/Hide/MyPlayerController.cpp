@@ -33,6 +33,7 @@
 #include "GameTimelineBar.h"
 #include "ResultScoreWidget.h"
 #include "LobbyPanelWidget.h"
+#include "LobbySettingsWidget.h"
 #include "RoleChoiceButtonWidget.h"
 #include "ReadyButtonWidget.h"
 #include "Components/CanvasPanel.h"
@@ -1342,9 +1343,40 @@ void AMyPlayerController::ServerSendLobbyChat_Implementation(const FString& Mess
     }
 }
 
-void AMyPlayerController::ClientSetLobbyMaxPlayers_Implementation(int32 InMaxPlayers)
+void AMyPlayerController::ClientSetLobbyGameSettings_Implementation(const FLobbyGameSettings& InSettings)
 {
-    LobbyMaxPlayers = FMath::Max(0, InMaxPlayers);
+    LobbyGameSettings = InSettings;
+    bHasLobbyGameSettings = true;
+}
+
+void AMyPlayerController::ServerSetLobbyGameSettings_Implementation(const FLobbyGameSettings& InSettings, bool bResetToDefaults)
+{
+    if (AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+    {
+        GM->HandleSetLobbyGameSettings(this, InSettings, bResetToDefaults);
+    }
+}
+
+void AMyPlayerController::ToggleLobbySettingsWindow()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (LobbySettingsWidget)
+    {
+        LobbySettingsWidget->RemoveFromParent();
+        LobbySettingsWidget = nullptr;
+        return;
+    }
+
+    LobbySettingsWidget = CreateWidget<ULobbySettingsWidget>(this, ULobbySettingsWidget::StaticClass());
+    if (LobbySettingsWidget)
+    {
+        // 대기실 화면(10) 위, 설정 창(1000) 아래
+        LobbySettingsWidget->AddToViewport(500);
+    }
 }
 
 void AMyPlayerController::RequestSetPreference(ERolePreference InPreference)
@@ -1377,6 +1409,12 @@ void AMyPlayerController::CloseWaitRoomUI()
     {
         LobbyPanelWidget->RemoveFromParent();
         LobbyPanelWidget = nullptr;
+    }
+
+    if (LobbySettingsWidget)
+    {
+        LobbySettingsWidget->RemoveFromParent();
+        LobbySettingsWidget = nullptr;
     }
 
     FInputModeGameOnly Mode;

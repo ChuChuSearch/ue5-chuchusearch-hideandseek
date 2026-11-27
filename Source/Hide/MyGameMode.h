@@ -21,6 +21,9 @@ class HIDE_API AMyGameMode : public AGameModeBase
 public:
     AMyGameMode();
 
+    // 이 게임 모드(블루프린트 기본값)의 단계 시간을 설정 구조체에 채운다(대기실 게임 설정의 처음 값)
+    void FillPhaseSettings(struct FLobbyGameSettings& OutSettings) const;
+
     virtual void BeginPlay() override;
     virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
     virtual void PostLogin(APlayerController* NewPlayer) override;

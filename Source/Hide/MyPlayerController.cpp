@@ -36,6 +36,9 @@
 #include "LobbySettingsWidget.h"
 #include "ReconnectWaitWidget.h"
 #include "SpectateHudWidget.h"
+#include "PropIconSet.h"
+#include "Components/SizeBox.h"
+#include "Engine/Texture2D.h"
 #include "Camera/CameraActor.h"
 #include "EngineUtils.h"
 #include "RoleChoiceButtonWidget.h"
@@ -73,6 +76,13 @@ AMyPlayerController::AMyPlayerController()
     if (BeaconMaterialFinder.Succeeded())
     {
         ClueBeaconMaterial = BeaconMaterialFinder.Object;
+    }
+
+    // 유령 물체 버튼에 쓸 물체 사진 목록
+    static ConstructorHelpers::FObjectFinder<UPropIconSet> PropIconsFinder(TEXT("/Game/Game/Data/DA_PropIcons.DA_PropIcons"));
+    if (PropIconsFinder.Succeeded())
+    {
+        PropIcons = PropIconsFinder.Object;
     }
 }
 
@@ -2184,6 +2194,60 @@ void AMyPlayerController::UpdateGhostUI()
         Params.CooldownDuration = Ghost->GetPlacementCooldownDuration();
 
         GhostUIWidgetInstance->ProcessEvent(Fn, &Params);
+    }
+
+    ApplyGhostSlotIcons(PropClasses);
+}
+
+void AMyPlayerController::ApplyGhostSlotIcons(const TArray<TSubclassOf<AActor>>& PropClasses)
+{
+    if (!GhostUIWidgetInstance)
+    {
+        return;
+    }
+
+    // WBP_GhostUI 왼쪽 아래 물체 버튼 세 개(Object_0~2)의 그림 칸(ObjectImage_0~2)에 물체 사진을 넣는다.
+    // 사진은 PropIconCommandlet으로 미리 찍어 둔 것(DA_PropIcons).
+    for (int32 Index = 0; Index < PropClasses.Num(); ++Index)
+    {
+        UImage* Image = Cast<UImage>(GhostUIWidgetInstance->GetWidgetFromName(*FString::Printf(TEXT("ObjectImage_%d"), Index)));
+        if (!Image)
+        {
+            continue;
+        }
+
+        UTexture2D* Icon = (PropIcons && PropClasses[Index]) ? PropIcons->FindIcon(PropClasses[Index]) : nullptr;
+        if (Image->GetBrush().GetResourceObject() == Icon && (Icon != nullptr) == Image->IsVisible())
+        {
+            continue;
+        }
+
+        if (!Icon)
+        {
+            // 빈 칸이면 그림을 숨긴다
+            Image->SetVisibility(ESlateVisibility::Hidden);
+            continue;
+        }
+
+        // 버튼 크기(SizeBox)에 맞춰 여백을 조금 두고 꽉 차게
+        float Side = 110.f;
+        if (const USizeBox* Box = Cast<USizeBox>(GhostUIWidgetInstance->GetWidgetFromName(*FString::Printf(TEXT("SizeBox_%d"), Index))))
+        {
+            const float W = Box->GetWidthOverride();
+            const float H = Box->GetHeightOverride();
+            if (W > 1.f && H > 1.f)
+            {
+                Side = FMath::Min(W, H) * 0.86f;
+            }
+        }
+
+        FSlateBrush Brush = Image->GetBrush();
+        Brush.SetResourceObject(Icon);
+        Brush.DrawAs = ESlateBrushDrawType::Image;
+        Brush.ImageSize = FVector2D(Side, Side);
+        Brush.TintColor = FSlateColor(FLinearColor::White);
+        Image->SetBrush(Brush);
+        Image->SetVisibility(ESlateVisibility::HitTestInvisible);
     }
 }
 

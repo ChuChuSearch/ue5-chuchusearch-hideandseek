@@ -471,6 +471,13 @@ private:
     // WBP_GameRoom 위쪽 프레임 아래 빈 홈에 게임 전체 타임라인 바를 끼워 넣는다
     void AttachTimelineBar();
 
+    // 유령 물체 버튼(왼쪽 아래 세 칸)에 물체 사진 넣기
+    void ApplyGhostSlotIcons(const TArray<TSubclassOf<AActor>>& PropClasses);
+
+    // 물체 → 사진 목록(PropIconCommandlet이 만든 DA_PropIcons). 참조해 두면 패키징할 때 사진도 들어간다.
+    UPROPERTY()
+    class UPropIconSet* PropIcons = nullptr;
+
     // ===== 유령 관전(로컬 전용) =====
     // V로 켜고 끈다. 살아 있는 플레이어(술래 + 숨는 사람) 주위를 마우스로 돌아보는 카메라.
     void ToggleSpectate();

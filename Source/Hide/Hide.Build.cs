@@ -30,6 +30,17 @@ public class Hide : ModuleRules
             "SlateCore"
         });
 
+        // 에디터에서만: 물체 사진(아이콘) 만드는 커맨드렛(PropIconCommandlet)이 썸네일 렌더링/에셋 저장을 쓴다
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(new string[]
+            {
+                "UnrealEd",
+                "AssetRegistry",
+                "RenderCore"
+            });
+        }
+
         // Uncomment if you are using Slate UI
         // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 

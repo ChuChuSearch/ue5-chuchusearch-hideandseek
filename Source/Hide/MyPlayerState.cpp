@@ -49,6 +49,12 @@ void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
     Nickname = Sanitized;
     UE_LOG(LogTemp, Log, TEXT("ServerSetNickname: %s -> '%s'"), *GetPlayerName(), *Nickname);
     ForceNetUpdate();
+
+    // 대기실 채팅에 "누구님이 들어왔어요" 안내(닉네임 입력이 멈춘 뒤 한 번)
+    if (AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+    {
+        GM->NotifyNicknameSet(this);
+    }
 }
 
 void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPreference)

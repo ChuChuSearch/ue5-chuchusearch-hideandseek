@@ -32,6 +32,10 @@
 #include "ScoreboardWidget.h"
 #include "GameTimelineBar.h"
 #include "ResultScoreWidget.h"
+#include "LobbyPanelWidget.h"
+#include "AnyRoleButtonWidget.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -1100,6 +1104,38 @@ void AMyPlayerController::ShowWaitRoomUI()
         ConfirmButton->SetVisibility(ESlateVisibility::Collapsed);
     }
 
+    // 예전 글자 한 줄짜리 참가자 목록은 숨기고, 오른쪽에 참가자 목록 + 채팅 패널을 띄운다
+    if (UWidget* OldList = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_PlayerListText")))
+    {
+        OldList->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    // 역할 선택에 '상관없음' 버튼을 술래 / 러너 버튼 아래 가운데에 넣는다(WBP 캔버스 좌표 기준)
+    if (UCanvasPanel* Canvas = Cast<UCanvasPanel>(WaitRoomWidgetInstance->GetRootWidget()))
+    {
+        UAnyRoleButtonWidget* AnyButton = CreateWidget<UAnyRoleButtonWidget>(this, UAnyRoleButtonWidget::StaticClass());
+        if (UCanvasPanelSlot* S = AnyButton ? Canvas->AddChildToCanvas(AnyButton) : nullptr)
+        {
+            // 술래 버튼(-575 ~ -341)과 러너 버튼(-304 ~ -60) 사이 가운데, 그 아래(버튼 아래쪽 y≈107, 닉네임 칸 위쪽 y≈179)
+            constexpr float Width = 210.f;
+            constexpr float Height = 54.f;
+            const float CenterX = (-575.f + (-304.f + 244.f)) * 0.5f;
+            S->SetAnchors(FAnchors(0.5f, 0.5f));
+            S->SetAlignment(FVector2D(0.0, 0.0));
+            S->SetPosition(FVector2D(CenterX - Width * 0.5f, 116.0));
+            S->SetSize(FVector2D(Width, Height));
+            S->SetZOrder(10);
+        }
+    }
+
+    if (!LobbyPanelWidget)
+    {
+        LobbyPanelWidget = CreateWidget<ULobbyPanelWidget>(this, ULobbyPanelWidget::StaticClass());
+    }
+    if (LobbyPanelWidget && !LobbyPanelWidget->IsInViewport())
+    {
+        LobbyPanelWidget->AddToViewport(10);
+    }
+
     FInputModeUIOnly Mode;
     SetInputMode(Mode);
 
@@ -1212,6 +1248,45 @@ void AMyPlayerController::ClientEnterWaitRoomUI_Implementation()
     PlayMusic(WaitRoomMusic);
 }
 
+void AMyPlayerController::SendLobbyChat(const FString& Message)
+{
+    const FString Trimmed = Message.TrimStartAndEnd();
+    if (!Trimmed.IsEmpty())
+    {
+        ServerSendLobbyChat(Trimmed.Left(AWaitRoomGameMode::MaxChatLength));
+    }
+}
+
+void AMyPlayerController::ServerSendLobbyChat_Implementation(const FString& Message)
+{
+    // 대기실에서만(게임 중에는 대기실 게임 모드가 없어서 무시된다)
+    if (AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+    {
+        GM->HandleLobbyChat(this, Message);
+    }
+}
+
+void AMyPlayerController::ClientSetLobbyMaxPlayers_Implementation(int32 InMaxPlayers)
+{
+    LobbyMaxPlayers = FMath::Max(0, InMaxPlayers);
+}
+
+void AMyPlayerController::RequestSetPreference(ERolePreference InPreference)
+{
+    if (AMyPlayerState* PS = GetPlayerState<AMyPlayerState>())
+    {
+        PS->ServerSetPreference(InPreference);
+    }
+}
+
+void AMyPlayerController::ClientReceiveLobbyChat_Implementation(const FString& SenderName, const FString& Message, bool bSystem)
+{
+    if (LobbyPanelWidget)
+    {
+        LobbyPanelWidget->AddChatLine(SenderName, Message, bSystem);
+    }
+}
+
 void AMyPlayerController::CloseWaitRoomUI()
 {
     if (!IsLocalController()) return;
@@ -1220,6 +1295,12 @@ void AMyPlayerController::CloseWaitRoomUI()
     {
         WaitRoomWidgetInstance->RemoveFromParent();
         WaitRoomWidgetInstance = nullptr;
+    }
+
+    if (LobbyPanelWidget)
+    {
+        LobbyPanelWidget->RemoveFromParent();
+        LobbyPanelWidget = nullptr;
     }
 
     FInputModeGameOnly Mode;

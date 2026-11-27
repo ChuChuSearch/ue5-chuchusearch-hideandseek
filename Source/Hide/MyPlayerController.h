@@ -29,6 +29,7 @@ class UReturnCountdownWidget;
 class UCrosshairWidget;
 class UScoreboardWidget;
 class UResultScoreWidget;
+class ULobbyPanelWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
@@ -64,6 +65,24 @@ public:
 
     UFUNCTION(BlueprintCallable)
     void UI_RequestStartGame();
+
+    // ===== 대기실 채팅 =====
+    void SendLobbyChat(const FString& Message);
+
+    UFUNCTION(Server, Reliable)
+    void ServerSendLobbyChat(const FString& Message);
+
+    UFUNCTION(Client, Reliable)
+    void ClientReceiveLobbyChat(const FString& SenderName, const FString& Message, bool bSystem);
+
+    // 대기실 최대 인원(서버 게임 모드 값). 참가자 목록에 "N/최대"로 표시. 모르면 0.
+    UFUNCTION(Client, Reliable)
+    void ClientSetLobbyMaxPlayers(int32 InMaxPlayers);
+
+    int32 GetLobbyMaxPlayers() const { return LobbyMaxPlayers; }
+
+    // 역할 지망 바꾸기(대기실 '상관없음' 버튼 등에서)
+    void RequestSetPreference(ERolePreference InPreference);
 
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputAction* IA_Attack = nullptr;
@@ -196,6 +215,12 @@ private:
 
     UPROPERTY()
     UUserWidget* WaitRoomWidgetInstance = nullptr;
+
+    // 대기실 오른쪽 참가자 목록 + 채팅(WBP_WaitRoom 위에 띄운다)
+    UPROPERTY(Transient)
+    ULobbyPanelWidget* LobbyPanelWidget = nullptr;
+
+    int32 LobbyMaxPlayers = 0;
 
     void ShowWaitRoomUI();
 

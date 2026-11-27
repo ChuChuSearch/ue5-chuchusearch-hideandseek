@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/ScaleBox.h"
 #include "Components/SizeBox.h"
+#include "GameFramework/GameStateBase.h"
 #include "Components/TextBlock.h"
 #include "Engine/Texture2D.h"
 #include "Sound/SoundBase.h"
@@ -91,10 +92,10 @@ void UReadyButtonWidget::BuildTree()
     Label->SetJustification(ETextJustify::Center);
     Button->SetContent(Label);
 
-    ApplyState(false);
+    ApplyState(false, false);
 }
 
-void UReadyButtonWidget::ApplyState(bool bReady)
+void UReadyButtonWidget::ApplyState(bool bHost, bool bActive)
 {
     if (!Button || !Label)
     {
@@ -102,8 +103,10 @@ void UReadyButtonWidget::ApplyState(bool bReady)
     }
 
     // START 버튼과 같은 상태별 그림/색(누를 때는 START처럼 Push 그림)
-    // 준비된 상태는 살짝 어둡게 해서 눌려 있는 느낌을 준다
-    const float Shade = bReady ? 0.8f : 1.f;
+    // 준비 버튼: 준비된 상태는 살짝 어둡게(눌려 있는 느낌)
+    // 시작 버튼: 아직 시작할 수 없으면(인원 부족, 준비 안 한 사람 있음) 살짝 어둡게
+    const bool bDim = bHost ? !bActive : bActive;
+    const float Shade = bDim ? 0.8f : 1.f;
     FButtonStyle Style = Button->GetStyle();
     Style.SetNormal(MakeImageBrush(NormalTexture, FLinearColor(Shade, Shade, Shade, 1.f)));
     Style.SetHovered(MakeImageBrush(HoverTexture, FLinearColor(0.724f, 0.724f, 0.724f, 1.f)));
@@ -129,40 +132,83 @@ void UReadyButtonWidget::ApplyState(bool bReady)
     Font.OutlineSettings.OutlineColor = TextOutline;
     Label->SetFont(Font);
     Label->SetColorAndOpacity(FSlateColor(TextFill));
-    Label->SetText(FText::FromString(bReady ? TEXT("준비 완료!") : TEXT("준비하기")));
+    const TCHAR* Text = bHost ? TEXT("시작하기") : (bActive ? TEXT("준비 완료!") : TEXT("준비하기"));
+    Label->SetText(FText::FromString(Text));
 }
 
 void UReadyButtonWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
-    const APlayerController* PC = GetOwningPlayer();
-    const AMyPlayerState* PS = PC ? PC->GetPlayerState<AMyPlayerState>() : nullptr;
-
-    // 방장: START / 그 외: 준비 버튼 (바뀔 때만)
-    const int32 Host = PS ? (PS->IsHost() ? 1 : 0) : -1;
-    if (Host != LastHost)
+    // 원래 START(영어 글자 그림)는 항상 숨기고 이 버튼이 대신한다
+    if (UWidget* Start = StartWidget.Get())
     {
-        LastHost = Host;
-        const bool bShowReady = Host == 0;
-        SetVisibility(bShowReady ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-        if (UWidget* Start = StartWidget.Get())
+        if (Start->GetVisibility() != ESlateVisibility::Collapsed)
         {
-            Start->SetVisibility(Host == 1 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+            Start->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
 
-    const int32 Ready = (PS && PS->IsReady()) ? 1 : 0;
-    if (Ready != LastReady)
+    const APlayerController* PC = GetOwningPlayer();
+    const AMyPlayerState* PS = PC ? PC->GetPlayerState<AMyPlayerState>() : nullptr;
+    const bool bHost = PS && PS->IsHost();
+
+    // 방장: 시작할 수 있는지(2명 이상 + 방장 말고 모두 준비) / 그 외: 내가 준비했는지
+    bool bActive = false;
+    if (bHost)
     {
-        LastReady = Ready;
-        ApplyState(Ready == 1);
+        const AGameStateBase* GS = GetWorld() ? GetWorld()->GetGameState() : nullptr;
+        int32 Count = 0;
+        bool bAllReady = true;
+        if (GS)
+        {
+            for (const APlayerState* Other : GS->PlayerArray)
+            {
+                const AMyPlayerState* MyOther = Cast<AMyPlayerState>(Other);
+                if (!MyOther)
+                {
+                    continue;
+                }
+                ++Count;
+                if (!MyOther->IsHost() && !MyOther->IsReady())
+                {
+                    bAllReady = false;
+                }
+            }
+        }
+        bActive = Count >= 2 && bAllReady;
+    }
+    else
+    {
+        bActive = PS && PS->IsReady();
+    }
+
+    // 바뀔 때만 다시 꾸민다
+    const int32 Host = bHost ? 1 : 0;
+    const int32 Active = bActive ? 1 : 0;
+    if (Host != LastHost || Active != LastReady)
+    {
+        LastHost = Host;
+        LastReady = Active;
+        ApplyState(bHost, bActive);
     }
 }
 
 void UReadyButtonWidget::OnClicked()
 {
-    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
+    AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer());
+    const AMyPlayerState* PS = PC ? PC->GetPlayerState<AMyPlayerState>() : nullptr;
+    if (!PC || !PS)
+    {
+        return;
+    }
+
+    // 방장은 게임 시작(안 되면 서버가 이유를 채팅으로 알려 준다), 그 외는 준비 / 준비 취소
+    if (PS->IsHost())
+    {
+        PC->UI_RequestStartGame();
+    }
+    else
     {
         PC->RequestToggleReady();
     }

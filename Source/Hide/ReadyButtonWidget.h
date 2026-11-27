@@ -8,8 +8,8 @@ class UButton;
 class UTextBlock;
 class UTexture2D;
 
-// 대기실 "준비하기" 버튼. START 버튼과 같은 그림(글자만 지운 READY_Button)에 글자를 얹고, START와 같은 자리에 둔다.
-// 방장이면 이 버튼을 숨기고 원래 START 버튼을 보이게, 방장이 아니면 START를 숨기고 이 버튼을 보이게 바꾼다.
+// 대기실 "시작하기 / 준비하기" 버튼. START 버튼 그림에서 글자만 지운 READY_Button에 한글 글자를 얹고, START 자리에 둔다.
+// 원래 START(영어 글자 그림)는 숨기고, 방장에게는 "시작하기", 나머지에게는 "준비하기"로 보인다.
 UCLASS()
 class HIDE_API UReadyButtonWidget : public UUserWidget
 {
@@ -18,7 +18,7 @@ class HIDE_API UReadyButtonWidget : public UUserWidget
 public:
     UReadyButtonWidget(const FObjectInitializer& ObjectInitializer);
 
-    // 방장 여부에 따라 서로 바꿔 보여 줄 START 버튼(WBP의 ScaleBox_StartButton)
+    // 대신할 원래 START 버튼(WBP의 ScaleBox_StartButton). 항상 숨긴다.
     void SetStartWidget(UWidget* InStartWidget) { StartWidget = InStartWidget; }
 
 protected:
@@ -27,7 +27,8 @@ protected:
 
 private:
     void BuildTree();
-    void ApplyState(bool bReady);
+    // bHost면 "시작하기"(bActive = 시작 가능), 아니면 "준비하기"(bActive = 준비함)
+    void ApplyState(bool bHost, bool bActive);
 
     UFUNCTION()
     void OnClicked();

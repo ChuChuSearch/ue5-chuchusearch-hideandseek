@@ -1148,7 +1148,7 @@ void AMyPlayerController::ShowWaitRoomUI()
             { ERolePreference::Any, TEXT("상관없음"), Hex(255, 128, 128), Hex(214, 82, 90), FVector2D((-575.0 + (-304.0 + 244.0)) * 0.5, 143.0), FVector2D(210.0, 54.0), 22 },
         };
 
-        // 준비 버튼: START 버튼과 똑같은 자리(같은 캔버스 배치)에 두고, 방장이면 START / 아니면 준비 버튼이 보이게 한다
+        // 시작/준비 버튼: 원래 START 자리(같은 캔버스 배치)에 두고 START는 숨긴다. 방장에게는 "시작하기", 나머지에게는 "준비하기"
         if (UWidget* StartBox = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_StartButton")))
         {
             if (const UCanvasPanelSlot* StartSlot = Cast<UCanvasPanelSlot>(StartBox->Slot))

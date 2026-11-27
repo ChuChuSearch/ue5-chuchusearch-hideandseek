@@ -186,6 +186,13 @@ private:
     UFUNCTION()
     void OnLeaveClicked();
 
+    // 지금 탭의 설정을 기본값으로
+    UFUNCTION()
+    void OnResetClicked();
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> ResetButtonText;
+
     // 게임 나가기 버튼의 "한 번 더 누르면 나가요" 상태
     void SetLeaveConfirm(bool bConfirm);
 

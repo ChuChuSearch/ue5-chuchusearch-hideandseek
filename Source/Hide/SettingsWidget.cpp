@@ -68,6 +68,20 @@ namespace
 
     constexpr float LeaveConfirmSeconds = 4.f;
 
+    // 초기화 버튼: 주황 테두리와 같은 계열의 연한 주황
+    const FLinearColor ResetFill = Hex(246, 178, 92);
+    const FLinearColor ResetHover = Hex(250, 196, 120);
+    const FLinearColor ResetPressed = Hex(222, 150, 60);
+    const FLinearColor ResetOutline = Hex(184, 108, 28);
+
+    // 그래픽 기본값
+    constexpr EWindowMode::Type DefaultWindowMode = EWindowMode::WindowedFullscreen;
+    constexpr int32 DefaultQualityLevel = 3;   // 최고(엔진 기본값과 같음)
+    constexpr float DefaultFrameLimit = 0.f;   // 무제한
+    constexpr bool bDefaultVSync = false;
+
+    const TCHAR* TabResetLabels[] = { TEXT("그래픽 초기화"), TEXT("오디오 초기화"), TEXT("조작 초기화") };
+
     FSlateBrush RoundBox(const FLinearColor& Fill, float Radius, const FLinearColor& Line = FLinearColor::Transparent, float LineWidth = 0.f, const FVector2f& Size = FVector2f::ZeroVector)
     {
         FSlateRoundedBoxBrush Brush(Fill, Line, LineWidth, Size);
@@ -414,7 +428,21 @@ void USettingsWidget::BuildTree()
     LeaveSize->SetContent(LeaveButton);
     if (UHorizontalBoxSlot* S = ButtonRow->AddChildToHorizontalBox(LeaveSize))
     {
-        S->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
+        S->SetPadding(FMargin(0.f, 0.f, 14.f, 0.f));
+    }
+
+    // 초기화: 지금 보고 있는 탭의 설정만 기본값으로(글자는 탭에 따라 "그래픽 초기화" 등으로 바뀐다)
+    UButton* Reset = MakeTextButton(TEXT("초기화"), ResetFill, ResetHover, ResetPressed, ResetOutline, 200.f, 54.f, 22);
+    ResetButtonText = Cast<UTextBlock>(Reset->GetContent());
+    Reset->OnClicked.AddDynamic(this, &USettingsWidget::OnResetClicked);
+
+    USizeBox* ResetSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    ResetSize->SetWidthOverride(200.f);
+    ResetSize->SetHeightOverride(54.f);
+    ResetSize->SetContent(Reset);
+    if (UHorizontalBoxSlot* S = ButtonRow->AddChildToHorizontalBox(ResetSize))
+    {
+        S->SetPadding(FMargin(0.f, 0.f, 14.f, 0.f));
     }
 
     // 이미 접속 화면이면 나갈 곳이 없다
@@ -874,6 +902,11 @@ void USettingsWidget::SelectTab(int32 TabIndex)
 {
     ActiveTab = FMath::Clamp(TabIndex, 0, TabButtons.Num() - 1);
     LastTab = ActiveTab;
+
+    if (ResetButtonText && ActiveTab < UE_ARRAY_COUNT(TabResetLabels))
+    {
+        ResetButtonText->SetText(FText::FromString(TabResetLabels[ActiveTab]));
+    }
 
     if (Pages)
     {
@@ -1433,6 +1466,57 @@ void USettingsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     }
 
     UpdateConfirmBanner();
+}
+
+// ===== 초기화 =====
+
+void USettingsWidget::OnResetClicked()
+{
+    switch (ActiveTab)
+    {
+    case 0:
+    {
+        // 그래픽: 바로 보여 주고, 다른 그래픽 변경처럼 10초 안에 "유지"를 눌러야 저장된다
+        UGameUserSettings* Settings = GetSettings();
+        if (!Settings)
+        {
+            return;
+        }
+
+        BeginGraphicsChange();
+        Settings->SetFullscreenMode(DefaultWindowMode);
+        Settings->SetScreenResolution(Settings->GetDesktopResolution());
+        Settings->SetOverallScalabilityLevel(DefaultQualityLevel);
+        // 해상도 배율은 해상도를 정한 뒤에 넣어야 맞게 계산된다
+        Settings->SetResolutionScaleNormalized(1.f);
+        Settings->SetFrameRateLimit(DefaultFrameLimit);
+        Settings->SetVSyncEnabled(bDefaultVSync);
+        ApplyGraphicsPreview();
+        break;
+    }
+
+    case 1:
+        if (OwnerPC)
+        {
+            OwnerPC->SetVolumeSetting(EVolumeChannel::Master, 1.f);
+            OwnerPC->SetVolumeSetting(EVolumeChannel::Music, 1.f);
+            OwnerPC->SetVolumeSetting(EVolumeChannel::SFX, 1.f);
+        }
+        RefreshAudio();
+        break;
+
+    case 2:
+        if (OwnerPC)
+        {
+            OwnerPC->SetMouseSensitivity(1.f);
+            OwnerPC->SetInvertMouseY(false);
+        }
+        RefreshControls();
+        break;
+
+    default:
+        break;
+    }
 }
 
 // ===== 게임 나가기 =====

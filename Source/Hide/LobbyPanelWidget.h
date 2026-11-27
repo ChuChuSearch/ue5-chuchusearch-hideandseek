@@ -37,6 +37,9 @@ private:
 
     void UpdateReadyArea(const TArray<const AMyPlayerState*>& Players, const AMyPlayerState* LocalPS);
 
+    UFUNCTION()
+    void OnSettingsClicked();
+
     void SubmitChat();
 
     UFUNCTION()

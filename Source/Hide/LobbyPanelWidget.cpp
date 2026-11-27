@@ -161,6 +161,36 @@ void ULobbyPanelWidget::BuildTree()
     UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Root"));
     WidgetTree->RootWidget = Root;
 
+    // 오른쪽 위 설정 버튼(F10 / ESC로도 열린다)
+    UButton* SettingsButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("SettingsButton"));
+    {
+        FButtonStyle Style = SettingsButton->GetStyle();
+        Style.SetNormal(RoundBox(PanelInnerFill, 18.f, PanelOuterLine, 3.f));
+        Style.SetHovered(RoundBox(Hex(255, 236, 210), 18.f, PanelOuterLine, 3.f));
+        Style.SetPressed(RoundBox(Hex(255, 226, 196), 18.f, AccentDark, 3.f));
+        Style.SetNormalPadding(FMargin(18.f, 6.f, 18.f, 8.f));
+        Style.SetPressedPadding(FMargin(18.f, 7.f, 18.f, 7.f));
+        if (ClickSound)
+        {
+            FSlateSound Click;
+            Click.SetResourceObject(ClickSound);
+            Style.SetPressedSound(Click);
+        }
+        SettingsButton->SetStyle(Style);
+    }
+    UTextBlock* SettingsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SettingsText"));
+    SettingsText->SetText(FText::FromString(TEXT("설정  F10")));
+    SettingsText->SetFont(MakeFont(true, 16));
+    SettingsText->SetColorAndOpacity(FSlateColor(LabelColor));
+    SettingsButton->SetContent(SettingsText);
+    SettingsButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnSettingsClicked);
+    if (UOverlaySlot* S = Root->AddChildToOverlay(SettingsButton))
+    {
+        S->SetHorizontalAlignment(HAlign_Right);
+        S->SetVerticalAlignment(VAlign_Top);
+        S->SetPadding(FMargin(0.f, 24.f, 36.f, 0.f));
+    }
+
     // 화면 오른쪽 세로 한 줄(위: 참가자, 아래: 채팅)
     USizeBox* ColumnSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ColumnSize"));
     ColumnSize->SetWidthOverride(PanelWidth);
@@ -588,6 +618,14 @@ void ULobbyPanelWidget::AddChatLine(const FString& SenderName, const FString& Me
 
     // 새 줄이 레이아웃에 잡힌 다음 맨 아래로
     bScrollToEndPending = true;
+}
+
+void ULobbyPanelWidget::OnSettingsClicked()
+{
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
+    {
+        PC->ToggleSettingsMenu();
+    }
 }
 
 void ULobbyPanelWidget::SubmitChat()

@@ -1193,7 +1193,12 @@ void AMyPlayerController::ShowWaitRoomUI()
         LobbyPanelWidget->AddToViewport(10);
     }
 
-    FInputModeUIOnly Mode;
+    // UI 전용 입력이면 F10 / ESC 같은 키가 플레이어 컨트롤러까지 오지 않아 설정 창을 열 수 없다.
+    // 대기실에는 캐릭터가 없어서 게임 입력이 들어가도 문제가 없으므로 게임+UI 겸용으로 둔다.
+    // (닉네임 / 채팅 칸에 글을 쓰는 동안 글자 키는 글 상자가 먼저 받는다)
+    FInputModeGameAndUI Mode;
+    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    Mode.SetHideCursorDuringCapture(false);
     SetInputMode(Mode);
 
     bShowMouseCursor = true;

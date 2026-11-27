@@ -218,6 +218,7 @@ void UControlsGuideWidget::RebuildRows()
         AddRow(TEXT("우클릭"), TEXT("놓기 취소"));
         AddRow(TEXT("Q / E"), TEXT("놓을 물체 회전"));
         AddRow(TEXT("R"), TEXT("물체 목록 새로고침"));
+        AddRow(TEXT("V"), TEXT("다른 사람 관전 켜기/끄기"));
         break;
 
     default:

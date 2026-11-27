@@ -471,6 +471,32 @@ private:
     // WBP_GameRoom 위쪽 프레임 아래 빈 홈에 게임 전체 타임라인 바를 끼워 넣는다
     void AttachTimelineBar();
 
+    // ===== 유령 관전(로컬 전용) =====
+    // V로 켜고 끈다. 살아 있는 플레이어(술래 + 숨는 사람) 주위를 마우스로 돌아보는 카메라.
+    void ToggleSpectate();
+    void StartSpectate();
+    void StopSpectate();
+    void SpectateNext();
+    void SpectatePrev();
+    void CycleSpectateTarget(int32 Direction);
+    void UpdateSpectate(float DeltaTime);
+    void GatherSpectateTargets(TArray<AMyCharacter*>& OutTargets) const;
+    FVector GetSpectatePivot(const AMyCharacter* Target) const;
+    void RefreshSpectateHud();
+
+    bool bSpectating = false;
+    TWeakObjectPtr<AMyCharacter> SpectateTarget;
+    float SpectateYaw = 0.f;
+    float SpectatePitch = -15.f;
+    FVector SpectatePivot = FVector::ZeroVector;
+    float SpectateHudRefreshElapsed = 0.f;
+
+    UPROPERTY(Transient)
+    class ACameraActor* SpectateCamera = nullptr;
+
+    UPROPERTY(Transient)
+    class USpectateHudWidget* SpectateHud = nullptr;
+
     TMap<TWeakObjectPtr<const APlayerState>, FHideScoreStats> TeamScoreCache;
 
     // ===== 치트(테스트용, Shipping 빌드에서는 동작 안 함) =====

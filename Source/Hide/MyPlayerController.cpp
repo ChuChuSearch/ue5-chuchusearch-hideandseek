@@ -35,6 +35,9 @@
 #include "LobbyPanelWidget.h"
 #include "LobbySettingsWidget.h"
 #include "ReconnectWaitWidget.h"
+#include "SpectateHudWidget.h"
+#include "Camera/CameraActor.h"
+#include "EngineUtils.h"
 #include "RoleChoiceButtonWidget.h"
 #include "ReadyButtonWidget.h"
 #include "Components/CanvasPanel.h"
@@ -161,6 +164,11 @@ void AMyPlayerController::SetupInputComponent()
         InputComponent->BindKey(EKeys::H, IE_Pressed, this, &AMyPlayerController::ToggleControlsGuide);
         InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AMyPlayerController::ShowScoreboard);
         InputComponent->BindKey(EKeys::Tab, IE_Released, this, &AMyPlayerController::HideScoreboard);
+
+        // 유령 관전: V 켜기/끄기, ← → 대상 바꾸기(좌/우클릭은 OnAttackPressed / PlayerTick에서)
+        InputComponent->BindKey(EKeys::V, IE_Pressed, this, &AMyPlayerController::ToggleSpectate);
+        InputComponent->BindKey(EKeys::Right, IE_Pressed, this, &AMyPlayerController::SpectateNext);
+        InputComponent->BindKey(EKeys::Left, IE_Pressed, this, &AMyPlayerController::SpectatePrev);
 
 #if !UE_BUILD_SHIPPING
         // 치트: Ctrl+Shift+C 단서 위치/비밀번호 보기
@@ -589,6 +597,16 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
     UpdatePhaseSounds();
     UpdateControlsGuide();
     UpdateClueCheat();
+
+    if (bSpectating)
+    {
+        UpdateSpectate(DeltaTime);
+        if (bSpectating && WasInputKeyJustPressed(EKeys::RightMouseButton))
+        {
+            SpectatePrev();
+        }
+        return;
+    }
 
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
@@ -1463,6 +1481,13 @@ void AMyPlayerController::OnAttackPressed(const FInputActionValue& Value)
         return;
     }
 
+    // 관전 중 좌클릭은 다음 대상
+    if (bSpectating)
+    {
+        SpectateNext();
+        return;
+    }
+
     if (AGhostCharacter* Ghost = GetGhostCharacter())
     {
         if (Ghost->IsPlacementMode())
@@ -2274,6 +2299,9 @@ void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
 
     LastGameResultSource = ResultSource;
 
+    // 관전 중이었으면 끝내고 결과 화면으로
+    StopSpectate();
+
     const AMyPlayerState* MPS = GetPlayerState<AMyPlayerState>();
     const bool bWon = MPS && MPS->GetFinalRole() == WinningRole;
 
@@ -2522,4 +2550,313 @@ void AMyPlayerController::PlayUISound(USoundBase* Sound, float Volume)
     }
 
     UGameplayStatics::PlaySound2D(this, Sound, Volume);
+}
+
+// ===== 유령 관전 =====
+
+void AMyPlayerController::ToggleSpectate()
+{
+    if (bSpectating)
+    {
+        StopSpectate();
+    }
+    else
+    {
+        StartSpectate();
+    }
+}
+
+void AMyPlayerController::SpectateNext()
+{
+    if (bSpectating)
+    {
+        CycleSpectateTarget(+1);
+    }
+}
+
+void AMyPlayerController::SpectatePrev()
+{
+    if (bSpectating)
+    {
+        CycleSpectateTarget(-1);
+    }
+}
+
+void AMyPlayerController::GatherSpectateTargets(TArray<AMyCharacter*>& OutTargets) const
+{
+    OutTargets.Reset();
+    if (!GetWorld())
+    {
+        return;
+    }
+
+    for (TActorIterator<AMyCharacter> It(GetWorld()); It; ++It)
+    {
+        AMyCharacter* MC = *It;
+        if (IsValid(MC) && !MC->IsEliminated() && MC->GetPlayerState())
+        {
+            OutTargets.Add(MC);
+        }
+    }
+
+    // 술래 먼저, 그다음 이름 순(누를 때마다 순서가 바뀌지 않게)
+    OutTargets.Sort([](const AMyCharacter& A, const AMyCharacter& B)
+    {
+        if (A.IsSeeker() != B.IsSeeker())
+        {
+            return A.IsSeeker();
+        }
+        const AMyPlayerState* PA = A.GetPlayerState<AMyPlayerState>();
+        const AMyPlayerState* PB = B.GetPlayerState<AMyPlayerState>();
+        return (PA ? PA->GetNickname() : FString()) < (PB ? PB->GetNickname() : FString());
+    });
+}
+
+FVector AMyPlayerController::GetSpectatePivot(const AMyCharacter* Target) const
+{
+    if (!Target)
+    {
+        return FVector::ZeroVector;
+    }
+
+    // 물체로 숨어 있으면 그 물체 가운데를 본다
+    if (const APropBase* Prop = Target->GetPossessedProp())
+    {
+        FVector Origin;
+        FVector Extent;
+        Prop->GetActorBounds(true, Origin, Extent);
+        return Origin;
+    }
+
+    return Target->GetActorLocation() + FVector(0.f, 0.f, 60.f);
+}
+
+void AMyPlayerController::StartSpectate()
+{
+    if (!IsLocalController() || bSpectating || SettingsWidget)
+    {
+        return;
+    }
+
+    AGhostCharacter* Ghost = GetGhostCharacter();
+    if (!Ghost)
+    {
+        return;
+    }
+
+    TArray<AMyCharacter*> Targets;
+    GatherSpectateTargets(Targets);
+    if (Targets.Num() == 0)
+    {
+        return;
+    }
+
+    // 놓기 중이었으면 취소(관전 중에는 물체를 놓지 않는다)
+    if (Ghost->IsPlacementMode())
+    {
+        Ghost->CancelPlacementMode();
+    }
+
+    bSpectating = true;
+    SpectateTarget = Targets[0];
+
+    // 유령은 관전하는 동안 움직이지 않는다
+    SetIgnoreMoveInput(true);
+
+    SpectateYaw = GetControlRotation().Yaw;
+    SpectatePitch = -15.f;
+    SpectatePivot = GetSpectatePivot(SpectateTarget.Get());
+
+    FActorSpawnParameters Params;
+    Params.Owner = this;
+    Params.ObjectFlags |= RF_Transient;
+    SpectateCamera = GetWorld()->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), FTransform::Identity, Params);
+    if (SpectateCamera)
+    {
+        SpectateCamera->SetReplicates(false);
+        if (UCameraComponent* Cam = SpectateCamera->GetCameraComponent())
+        {
+            Cam->bConstrainAspectRatio = false;
+            Cam->SetFieldOfView(90.f);
+        }
+        UpdateSpectate(0.f);
+        SetViewTargetWithBlend(SpectateCamera, 0.3f);
+    }
+
+    // 마우스로 둘러보도록 커서를 숨기고 게임 입력만
+    if (GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance->SetVisibility(ESlateVisibility::Hidden);
+    }
+    bShowMouseCursor = false;
+    bEnableClickEvents = false;
+    bEnableMouseOverEvents = false;
+    SetInputMode(FInputModeGameOnly());
+
+    if (!SpectateHud)
+    {
+        SpectateHud = CreateWidget<USpectateHudWidget>(this, USpectateHudWidget::StaticClass());
+    }
+    if (SpectateHud && !SpectateHud->IsInViewport())
+    {
+        SpectateHud->AddToViewport(820);
+    }
+    RefreshSpectateHud();
+}
+
+void AMyPlayerController::StopSpectate()
+{
+    if (!bSpectating)
+    {
+        return;
+    }
+
+    bSpectating = false;
+    SpectateTarget = nullptr;
+    SetIgnoreMoveInput(false);
+
+    if (APawn* MyPawn = GetPawn())
+    {
+        SetViewTargetWithBlend(MyPawn, 0.25f);
+    }
+
+    if (SpectateCamera)
+    {
+        SpectateCamera->Destroy();
+        SpectateCamera = nullptr;
+    }
+
+    if (SpectateHud)
+    {
+        SpectateHud->RemoveFromParent();
+    }
+
+    // 유령 화면(커서 + 물체 아이콘)으로 돌아간다
+    if (GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+    if (GetGhostCharacter())
+    {
+        FInputModeGameAndUI Mode;
+        Mode.SetHideCursorDuringCapture(false);
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        SetInputMode(Mode);
+        bShowMouseCursor = true;
+        bEnableClickEvents = true;
+        bEnableMouseOverEvents = true;
+    }
+}
+
+void AMyPlayerController::CycleSpectateTarget(int32 Direction)
+{
+    TArray<AMyCharacter*> Targets;
+    GatherSpectateTargets(Targets);
+    if (Targets.Num() == 0)
+    {
+        StopSpectate();
+        return;
+    }
+
+    int32 Index = Targets.IndexOfByKey(SpectateTarget.Get());
+    Index = Index == INDEX_NONE ? 0 : (Index + Direction + Targets.Num()) % Targets.Num();
+    SpectateTarget = Targets[Index];
+    RefreshSpectateHud();
+}
+
+void AMyPlayerController::RefreshSpectateHud()
+{
+    AMyCharacter* Target = SpectateTarget.Get();
+    if (!SpectateHud || !Target)
+    {
+        return;
+    }
+
+    TArray<AMyCharacter*> Targets;
+    GatherSpectateTargets(Targets);
+
+    const AMyPlayerState* PS = Target->GetPlayerState<AMyPlayerState>();
+    FString Name = PS ? PS->GetNickname() : FString();
+    if (Name.IsEmpty() && PS)
+    {
+        Name = PS->GetPlayerName();
+    }
+
+    const bool bSeeker = Target->IsSeeker();
+    const FString RoleLabel = bSeeker
+        ? FString(TEXT("술래"))
+        : (Target->IsPossessing() ? FString(TEXT("숨는 사람 · 숨는 중")) : FString(TEXT("숨는 사람")));
+    const FLinearColor RoleColor = bSeeker
+        ? FLinearColor::FromSRGBColor(FColor(255, 120, 120))
+        : FLinearColor::FromSRGBColor(FColor(120, 220, 150));
+
+    SpectateHud->SetTarget(Name, RoleLabel, RoleColor, Targets.IndexOfByKey(Target), Targets.Num());
+}
+
+void AMyPlayerController::UpdateSpectate(float DeltaTime)
+{
+    // 유령이 아니게 되면(게임 끝, 맵 이동 등) 관전을 끈다
+    if (!GetGhostCharacter())
+    {
+        StopSpectate();
+        return;
+    }
+
+    // 보던 사람이 잡히거나 나가면 다음 사람으로
+    AMyCharacter* Target = SpectateTarget.Get();
+    if (!IsValid(Target) || Target->IsEliminated())
+    {
+        CycleSpectateTarget(+1);
+        Target = SpectateTarget.Get();
+        if (!bSpectating || !Target)
+        {
+            return;
+        }
+    }
+
+    // 마우스로 대상 주위를 돈다(설정 창이 열려 있으면 멈춤)
+    if (!SettingsWidget)
+    {
+        float DX = 0.f;
+        float DY = 0.f;
+        GetInputMouseDelta(DX, DY);
+        SpectateYaw += DX * 2.0f;
+        SpectatePitch = FMath::Clamp(SpectatePitch + DY * 2.0f, -70.f, 30.f);
+    }
+
+    // 숨는 중 표시가 바뀔 수 있어 0.5초마다 다시 쓴다
+    SpectateHudRefreshElapsed += DeltaTime;
+    if (SpectateHudRefreshElapsed >= 0.5f)
+    {
+        SpectateHudRefreshElapsed = 0.f;
+        RefreshSpectateHud();
+    }
+
+    const FVector WantedPivot = GetSpectatePivot(Target);
+    SpectatePivot = DeltaTime > 0.f
+        ? FMath::VInterpTo(SpectatePivot, WantedPivot, DeltaTime, 12.f)
+        : WantedPivot;
+
+    constexpr float Distance = 420.f;
+    const FRotator ViewRot(SpectatePitch, SpectateYaw, 0.f);
+    FVector CamLoc = SpectatePivot - ViewRot.Vector() * Distance;
+
+    // 벽에 막히면 카메라를 당긴다
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(SpectateCamera), false);
+    Params.AddIgnoredActor(Target);
+    if (AActor* Prop = Target->GetPossessedProp())
+    {
+        Params.AddIgnoredActor(Prop);
+    }
+    Params.AddIgnoredActor(GetPawn());
+    FHitResult Hit;
+    if (GetWorld()->SweepSingleByChannel(Hit, SpectatePivot, CamLoc, FQuat::Identity, ECC_Camera, FCollisionShape::MakeSphere(12.f), Params))
+    {
+        CamLoc = Hit.Location;
+    }
+
+    if (SpectateCamera)
+    {
+        SpectateCamera->SetActorLocationAndRotation(CamLoc, ViewRot);
+    }
 }

@@ -298,20 +298,39 @@ void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)
     TryStartGame(RequestPC);
 }
 
-bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC)
+bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutFailReason)
 {
+    auto Fail = [OutFailReason](const TCHAR* Reason)
+    {
+        if (OutFailReason)
+        {
+            *OutFailReason = Reason;
+        }
+        return false;
+    };
+
     if (!HasAuthority() || !IsValid(RequestPC) || !GameState) return false;
 
     AMyPlayerState* RequestPS = RequestPC->GetPlayerState<AMyPlayerState>();
-    if (!RequestPS || !RequestPS->IsHost()) return false;
+    if (!RequestPS || !RequestPS->IsHost()) return Fail(TEXT("게임은 방장만 시작할 수 있어요"));
 
     const int32 PlayerCount = GameState->PlayerArray.Num();
     if (PlayerCount < 2)
     {
-        return false;
+        return Fail(TEXT("2명 이상 모여야 시작할 수 있어요"));
     }
 
     if (MaxLobbyPlayers > 0 && PlayerCount > MaxLobbyPlayers) return false;
+
+    // 방장을 뺀 모두가 준비해야 시작할 수 있다
+    for (APlayerState* PS : GameState->PlayerArray)
+    {
+        const AMyPlayerState* MPS = Cast<AMyPlayerState>(PS);
+        if (MPS && !MPS->IsHost() && !MPS->IsReady())
+        {
+            return Fail(TEXT("아직 준비하지 않은 사람이 있어요"));
+        }
+    }
 
     AMyPlayerState* SeekerPS = nullptr;
     if (!PickSeeker(SeekerPS) || !SeekerPS) return false;

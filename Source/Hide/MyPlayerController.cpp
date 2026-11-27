@@ -33,7 +33,8 @@
 #include "GameTimelineBar.h"
 #include "ResultScoreWidget.h"
 #include "LobbyPanelWidget.h"
-#include "AnyRoleButtonWidget.h"
+#include "RoleChoiceButtonWidget.h"
+#include "ReadyButtonWidget.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
@@ -1088,6 +1089,11 @@ void AMyPlayerController::ShowWaitRoomUI()
         NicknameBox->OnTextChanged.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextChanged);
         NicknameBox->OnTextCommitted.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextCommitted);
 
+        // "닉네임을 입력하세요" / 입력 글자가 칸에 비해 커서 줄인다(WBP 기본 24).
+        // 칸 높이는 옆 연필 그림 칸(43)이 정하므로 글자만 작아지고 칸 크기는 그대로다.
+        NicknameBox->WidgetStyle.TextStyle.Font.Size = 18;
+        NicknameBox->SynchronizeProperties();
+
         // 게임을 마치고 돌아온 경우: 전에 쓰던 닉네임을 채우고 서버에 다시 보낸다
         // (대기실 복귀는 재접속 방식이라 서버의 PlayerState가 새로 만들어진다)
         const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
@@ -1109,21 +1115,72 @@ void AMyPlayerController::ShowWaitRoomUI()
     {
         OldList->SetVisibility(ESlateVisibility::Collapsed);
     }
-    // 역할 선택에 '상관없음' 버튼을 술래 / 러너 버튼 아래 가운데에 넣는다(WBP 캔버스 좌표 기준)
+    // 역할 선택 버튼 3개(술래 지망 / 러너 지망 / 상관없음)를 같은 모양으로 넣는다.
+    // 원래 WBP의 이미지 버튼 두 개는 숨기고 그 자리에 둔다(WBP 캔버스 좌표 기준).
     if (UCanvasPanel* Canvas = Cast<UCanvasPanel>(WaitRoomWidgetInstance->GetRootWidget()))
     {
-        UAnyRoleButtonWidget* AnyButton = CreateWidget<UAnyRoleButtonWidget>(this, UAnyRoleButtonWidget::StaticClass());
-        if (UCanvasPanelSlot* S = AnyButton ? Canvas->AddChildToCanvas(AnyButton) : nullptr)
+        for (const TCHAR* OldName : { TEXT("SeekerChoiceButton"), TEXT("RunnerChoiceButton") })
         {
-            // 술래 버튼(-575 ~ -341)과 러너 버튼(-304 ~ -60) 사이 가운데, 그 아래(버튼 아래쪽 y≈107, 닉네임 칸 위쪽 y≈179)
-            constexpr float Width = 210.f;
-            constexpr float Height = 54.f;
-            const float CenterX = (-575.f + (-304.f + 244.f)) * 0.5f;
-            S->SetAnchors(FAnchors(0.5f, 0.5f));
-            S->SetAlignment(FVector2D(0.0, 0.0));
-            S->SetPosition(FVector2D(CenterX - Width * 0.5f, 116.0));
-            S->SetSize(FVector2D(Width, Height));
-            S->SetZOrder(10);
+            if (UWidget* Old = WaitRoomWidgetInstance->GetWidgetFromName(OldName))
+            {
+                Old->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        }
+
+        struct FRoleButtonSpec
+        {
+            ERolePreference Preference;
+            const TCHAR* Label;
+            FLinearColor Fill;
+            FLinearColor Line;
+            FVector2D Center;   // 캔버스 가운데 기준 위치
+            FVector2D Size;
+            int32 FontSize;
+        };
+
+        auto Hex = [](uint8 R, uint8 G, uint8 B) { return FLinearColor::FromSRGBColor(FColor(R, G, B)); };
+
+        // 원래 버튼 자리: 술래 (-575, 27, 234x78), 러너 (-304, 29, 244x78).
+        // 상관없음은 두 버튼 사이 가운데 아래(닉네임 칸 위쪽 y≈179 전까지).
+        const FRoleButtonSpec Specs[] = {
+            { ERolePreference::SeekerWish, TEXT("술래 지망"), Hex(232, 84, 90), Hex(176, 40, 52), FVector2D(-575.0 + 117.0, 27.0 + 39.0), FVector2D(226.0, 64.0), 24 },
+            { ERolePreference::RunnerWish, TEXT("러너 지망"), Hex(72, 178, 112), Hex(36, 120, 70), FVector2D(-304.0 + 122.0, 29.0 + 39.0), FVector2D(226.0, 64.0), 24 },
+            { ERolePreference::Any, TEXT("상관없음"), Hex(255, 128, 128), Hex(214, 82, 90), FVector2D((-575.0 + (-304.0 + 244.0)) * 0.5, 143.0), FVector2D(210.0, 54.0), 22 },
+        };
+
+        // 준비 버튼: START 버튼과 똑같은 자리(같은 캔버스 배치)에 두고, 방장이면 START / 아니면 준비 버튼이 보이게 한다
+        if (UWidget* StartBox = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_StartButton")))
+        {
+            if (const UCanvasPanelSlot* StartSlot = Cast<UCanvasPanelSlot>(StartBox->Slot))
+            {
+                UReadyButtonWidget* ReadyButton = CreateWidget<UReadyButtonWidget>(this, UReadyButtonWidget::StaticClass());
+                if (UCanvasPanelSlot* S = ReadyButton ? Canvas->AddChildToCanvas(ReadyButton) : nullptr)
+                {
+                    S->SetLayout(StartSlot->GetLayout());
+                    S->SetAutoSize(StartSlot->GetAutoSize());
+                    S->SetZOrder(StartSlot->GetZOrder());
+                    ReadyButton->SetStartWidget(StartBox);
+                }
+            }
+        }
+
+        for (const FRoleButtonSpec& Spec : Specs)
+        {
+            URoleChoiceButtonWidget* RoleButton = CreateWidget<URoleChoiceButtonWidget>(this, URoleChoiceButtonWidget::StaticClass());
+            if (!RoleButton)
+            {
+                continue;
+            }
+
+            RoleButton->Setup(Spec.Preference, Spec.Label, Spec.Fill, Spec.Line, Spec.FontSize);
+            if (UCanvasPanelSlot* S = Canvas->AddChildToCanvas(RoleButton))
+            {
+                S->SetAnchors(FAnchors(0.5f, 0.5f));
+                S->SetAlignment(FVector2D(0.5, 0.5));
+                S->SetPosition(Spec.Center);
+                S->SetSize(Spec.Size);
+                S->SetZOrder(10);
+            }
         }
     }
 
@@ -1203,9 +1260,23 @@ void AMyPlayerController::ServerRequestStartGame_Implementation()
 
     // 방장이 아니거나 인원이 맞지 않으면 시작되지 않으므로, 실제로 시작될 때만 UI를 닫는다.
     AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr;
-    if (GM && GM->TryStartGame(this))
+    FString FailReason;
+    if (GM && GM->TryStartGame(this, &FailReason))
     {
         ClientCloseWaitRoomUI();
+    }
+    else if (!FailReason.IsEmpty())
+    {
+        // 왜 시작이 안 됐는지 누른 사람 채팅 칸에 안내
+        ClientReceiveLobbyChat(FString(), FailReason, true);
+    }
+}
+
+void AMyPlayerController::RequestToggleReady()
+{
+    if (AMyPlayerState* PS = GetPlayerState<AMyPlayerState>())
+    {
+        PS->ServerSetReady(!PS->IsReady());
     }
 }
 

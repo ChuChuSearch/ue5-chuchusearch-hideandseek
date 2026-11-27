@@ -81,8 +81,11 @@ public:
 
     int32 GetLobbyMaxPlayers() const { return LobbyMaxPlayers; }
 
-    // 역할 지망 바꾸기(대기실 '상관없음' 버튼 등에서)
+    // 역할 지망 바꾸기(대기실 역할 선택 버튼에서)
     void RequestSetPreference(ERolePreference InPreference);
+
+    // 대기실 준비 / 준비 취소(방장은 해당 없음)
+    void RequestToggleReady();
 
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputAction* IA_Attack = nullptr;

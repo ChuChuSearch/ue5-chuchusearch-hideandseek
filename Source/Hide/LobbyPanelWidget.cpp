@@ -49,6 +49,7 @@ namespace
     const FLinearColor SeekerColor = Hex(214, 64, 70);
     const FLinearColor RunnerColor = Hex(56, 150, 96);
     const FLinearColor AnyColor = Hex(160, 140, 120);
+    const FLinearColor ReadyColor = Hex(64, 170, 220);
     const FLinearColor HostFill = Hex(255, 214, 96);
     const FLinearColor HostText = Hex(150, 96, 10);
     const FLinearColor RowFill = Hex(250, 240, 220);
@@ -183,13 +184,15 @@ void ULobbyPanelWidget::BuildTree()
     PlayerRows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("PlayerRows"));
     PlayersBody->AddChildToVerticalBox(PlayerRows);
 
-    UTextBlock* PlayersHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PlayersHint"));
-    PlayersHint->SetText(FText::FromString(TEXT("2명 이상 모이면 방장이 게임을 시작할 수 있어요")));
+    // 준비 버튼은 화면 아래 START 자리에 있다(UReadyButtonWidget). 여기에는 준비 현황 안내만.
+    PlayersHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PlayersHint"));
     PlayersHint->SetFont(MakeFont(false, 12));
     PlayersHint->SetColorAndOpacity(FSlateColor(SubLabelColor));
+    PlayersHint->SetAutoWrapText(true);
+    PlayersHint->SetJustification(ETextJustify::Center);
     if (UVerticalBoxSlot* S = PlayersBody->AddChildToVerticalBox(PlayersHint))
     {
-        S->SetHorizontalAlignment(HAlign_Center);
+        S->SetHorizontalAlignment(HAlign_Fill);
         S->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
     }
 
@@ -331,8 +334,8 @@ void ULobbyPanelWidget::RefreshPlayers()
     FString Signature;
     for (const AMyPlayerState* PS : Players)
     {
-        Signature += FString::Printf(TEXT("%p|%s|%d|%d|%d;"), PS, *PS->GetNickname(),
-            static_cast<int32>(PS->GetPreference()), PS->IsHost() ? 1 : 0, PS == LocalPS ? 1 : 0);
+        Signature += FString::Printf(TEXT("%p|%s|%d|%d|%d|%d;"), PS, *PS->GetNickname(),
+            static_cast<int32>(PS->GetPreference()), PS->IsHost() ? 1 : 0, PS == LocalPS ? 1 : 0, PS->IsReady() ? 1 : 0);
     }
     const AMyPlayerController* MyPC = Cast<AMyPlayerController>(PC);
     const int32 MaxPlayers = MyPC ? MyPC->GetLobbyMaxPlayers() : 0;
@@ -357,6 +360,8 @@ void ULobbyPanelWidget::RefreshPlayers()
     {
         AddPlayerRow(PS, PS == LocalPS);
     }
+
+    UpdateReadyArea(Players, Cast<AMyPlayerState>(LocalPS));
 
     // 남은 자리는 점선 느낌의 빈 줄로 보여 준다
     for (int32 i = Players.Num(); i < MaxPlayers; ++i)
@@ -393,16 +398,6 @@ void ULobbyPanelWidget::AddPlayerRow(const AMyPlayerState* PS, bool bLocal)
 
     UHorizontalBox* Line = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     RowBg->SetContent(Line);
-
-    // 방장 표시
-    if (PS->IsHost())
-    {
-        if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(MakeChip(TEXT("방장"), HostFill, HostText, 12)))
-        {
-            S->SetVerticalAlignment(VAlign_Center);
-            S->SetPadding(FMargin(0.f, 0.f, 8.f, 0.f));
-        }
-    }
 
     // 닉네임(길면 …으로 줄임). 아직 안 정했으면 흐리게 안내.
     const FString Nickname = PS->GetNickname();
@@ -453,10 +448,77 @@ void ULobbyPanelWidget::AddPlayerRow(const AMyPlayerState* PS, bool bLocal)
         S->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f));
     }
 
+    // 상태: 방장 / 준비 완료 / 준비 중
+    FString StatusText = TEXT("준비 중");
+    FLinearColor StatusFill = Hex(230, 220, 204);
+    FLinearColor StatusTextColor = SubLabelColor;
+    if (PS->IsHost())
+    {
+        StatusText = TEXT("방장");
+        StatusFill = HostFill;
+        StatusTextColor = HostText;
+    }
+    else if (PS->IsReady())
+    {
+        StatusText = TEXT("준비 완료");
+        StatusFill = ReadyColor;
+        StatusTextColor = FLinearColor::White;
+    }
+
+    USizeBox* StatusBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    StatusBox->SetWidthOverride(84.f);
+    UWidget* StatusChip = MakeChip(StatusText, StatusFill, StatusTextColor, 13);
+    if (UBorder* ChipBorder = Cast<UBorder>(StatusChip))
+    {
+        ChipBorder->SetHorizontalAlignment(HAlign_Center);
+    }
+    StatusBox->SetContent(StatusChip);
+    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(StatusBox))
+    {
+        S->SetVerticalAlignment(VAlign_Center);
+        S->SetPadding(FMargin(6.f, 0.f, 0.f, 0.f));
+    }
+
     if (UVerticalBoxSlot* S = PlayerRows->AddChildToVerticalBox(RowBg))
     {
         S->SetPadding(FMargin(0.f, 3.f));
     }
+}
+
+void ULobbyPanelWidget::UpdateReadyArea(const TArray<const AMyPlayerState*>& Players, const AMyPlayerState* LocalPS)
+{
+    if (!PlayersHint)
+    {
+        return;
+    }
+
+    int32 Guests = 0;
+    int32 ReadyCount = 0;
+    for (const AMyPlayerState* PS : Players)
+    {
+        if (!PS->IsHost())
+        {
+            ++Guests;
+            ReadyCount += PS->IsReady() ? 1 : 0;
+        }
+    }
+
+    const bool bHost = LocalPS && LocalPS->IsHost();
+
+    FString Hint;
+    if (Players.Num() < 2)
+    {
+        Hint = TEXT("2명 이상 모이면 게임을 시작할 수 있어요");
+    }
+    else if (ReadyCount < Guests)
+    {
+        Hint = FString::Printf(TEXT("준비 %d/%d · 모두 준비하면 방장이 시작할 수 있어요"), ReadyCount, Guests);
+    }
+    else
+    {
+        Hint = bHost ? TEXT("모두 준비했어요! START를 눌러 시작하세요") : TEXT("모두 준비했어요! 방장이 시작하면 바로 출발해요");
+    }
+    PlayersHint->SetText(FText::FromString(Hint));
 }
 
 // ===== 채팅 =====

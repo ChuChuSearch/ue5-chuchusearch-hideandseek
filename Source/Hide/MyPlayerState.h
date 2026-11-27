@@ -120,6 +120,13 @@ public:
     UFUNCTION(BlueprintCallable, Server, Reliable)
     void ServerSetPreference(ERolePreference InPreference);
 
+    // 대기실 준비(방장은 준비 없이 시작 버튼을 누른다). 대기실에 올 때마다 새 PlayerState라 자동으로 풀린다.
+    UFUNCTION(BlueprintCallable)
+    bool IsReady() const { return bReady; }
+
+    UFUNCTION(Server, Reliable)
+    void ServerSetReady(bool bNewReady);
+
     bool IsInWaitRoom_Server() const;
 
     void ExportReconnectData(FReconnectPlayerData& OutData) const;
@@ -194,6 +201,9 @@ protected:
 
     UPROPERTY(Replicated)
     bool bRoundEliminated = false;
+
+    UPROPERTY(Replicated)
+    bool bReady = false;
 
     UPROPERTY(Replicated)
     FString Nickname;

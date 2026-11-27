@@ -1,7 +1,6 @@
-#include "AnyRoleButtonWidget.h"
+#include "RoleChoiceButtonWidget.h"
 
 #include "MyPlayerController.h"
-#include "MyPlayerState.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -25,20 +24,39 @@ namespace
     const FLinearColor IdleHover = Hex(255, 236, 210);
     const FLinearColor IdleLine = Hex(236, 152, 42);
     const FLinearColor LabelColor = Hex(122, 74, 30);
-    const FLinearColor AccentColor = Hex(255, 128, 128);
-    const FLinearColor AccentHover = Hex(255, 158, 150);
-    const FLinearColor AccentDark = Hex(214, 82, 90);
 
-    FSlateBrush RoundBox(const FLinearColor& Fill, float Radius, const FLinearColor& Line, float LineWidth)
+    constexpr float Radius = 26.f;
+
+    FSlateBrush RoundBox(const FLinearColor& Fill, const FLinearColor& Line, float LineWidth)
     {
         FSlateRoundedBoxBrush Brush(Fill, Line, LineWidth);
         Brush.OutlineSettings.CornerRadii = FVector4(Radius, Radius, Radius, Radius);
         Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
         return Brush;
     }
+
+    FLinearColor Lighten(const FLinearColor& C, float Amount)
+    {
+        return FMath::Lerp(C, FLinearColor::White, Amount).CopyWithNewOpacity(C.A);
+    }
 }
 
-TSharedRef<SWidget> UAnyRoleButtonWidget::RebuildWidget()
+void URoleChoiceButtonWidget::Setup(ERolePreference InPreference, const FString& InLabel, const FLinearColor& InSelectedFill, const FLinearColor& InSelectedLine, int32 InFontSize)
+{
+    Preference = InPreference;
+    LabelText = InLabel;
+    SelectedFill = InSelectedFill;
+    SelectedLine = InSelectedLine;
+    FontSize = InFontSize;
+
+    if (Label)
+    {
+        Label->SetText(FText::FromString(LabelText));
+    }
+    LastSelected = -1;
+}
+
+TSharedRef<SWidget> URoleChoiceButtonWidget::RebuildWidget()
 {
     if (WidgetTree && !WidgetTree->RootWidget)
     {
@@ -48,25 +66,25 @@ TSharedRef<SWidget> UAnyRoleButtonWidget::RebuildWidget()
     return Super::RebuildWidget();
 }
 
-void UAnyRoleButtonWidget::BuildTree()
+void URoleChoiceButtonWidget::BuildTree()
 {
     BoldFont = LoadObject<UObject>(nullptr, BoldFontPath);
     ClickSound = LoadObject<USoundBase>(nullptr, ClickSoundPath);
     HoverSound = LoadObject<USoundBase>(nullptr, HoverSoundPath);
 
-    Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("AnyButton"));
+    Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("RoleButton"));
     WidgetTree->RootWidget = Button;
-    Button->OnClicked.AddDynamic(this, &UAnyRoleButtonWidget::OnClicked);
+    Button->OnClicked.AddDynamic(this, &URoleChoiceButtonWidget::OnClicked);
 
-    Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("AnyLabel"));
-    Label->SetText(FText::FromString(TEXT("상관없음")));
+    Label = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("RoleLabel"));
+    Label->SetText(FText::FromString(LabelText));
     Label->SetJustification(ETextJustify::Center);
     Button->SetContent(Label);
 
     ApplyStyle(false);
 }
 
-void UAnyRoleButtonWidget::ApplyStyle(bool bSelected)
+void URoleChoiceButtonWidget::ApplyStyle(bool bSelected)
 {
     if (!Button || !Label)
     {
@@ -76,15 +94,15 @@ void UAnyRoleButtonWidget::ApplyStyle(bool bSelected)
     FButtonStyle Style = Button->GetStyle();
     if (bSelected)
     {
-        Style.SetNormal(RoundBox(AccentColor, 24.f, AccentDark, 3.f));
-        Style.SetHovered(RoundBox(AccentHover, 24.f, AccentDark, 3.f));
-        Style.SetPressed(RoundBox(AccentDark, 24.f, AccentDark, 3.f));
+        Style.SetNormal(RoundBox(SelectedFill, SelectedLine, 3.f));
+        Style.SetHovered(RoundBox(Lighten(SelectedFill, 0.15f), SelectedLine, 3.f));
+        Style.SetPressed(RoundBox(SelectedLine, SelectedLine, 3.f));
     }
     else
     {
-        Style.SetNormal(RoundBox(IdleFill, 24.f, IdleLine, 3.f));
-        Style.SetHovered(RoundBox(IdleHover, 24.f, IdleLine, 3.f));
-        Style.SetPressed(RoundBox(IdleHover, 24.f, AccentDark, 3.f));
+        Style.SetNormal(RoundBox(IdleFill, IdleLine, 3.f));
+        Style.SetHovered(RoundBox(IdleHover, IdleLine, 3.f));
+        Style.SetPressed(RoundBox(IdleHover, SelectedLine, 3.f));
     }
     Style.SetNormalPadding(FMargin(16.f, 4.f));
     Style.SetPressedPadding(FMargin(16.f, 5.f, 16.f, 3.f));
@@ -102,24 +120,24 @@ void UAnyRoleButtonWidget::ApplyStyle(bool bSelected)
     }
     Button->SetStyle(Style);
 
-    FSlateFontInfo Font = BoldFont ? FSlateFontInfo(BoldFont.Get(), 22) : FCoreStyle::GetDefaultFontStyle("Bold", 22);
+    FSlateFontInfo Font = BoldFont ? FSlateFontInfo(BoldFont.Get(), FontSize) : FCoreStyle::GetDefaultFontStyle("Bold", FontSize);
     if (bSelected)
     {
         Font.OutlineSettings.OutlineSize = 2;
-        Font.OutlineSettings.OutlineColor = AccentDark;
+        Font.OutlineSettings.OutlineColor = SelectedLine;
     }
     Label->SetFont(Font);
     Label->SetColorAndOpacity(FSlateColor(bSelected ? FLinearColor::White : LabelColor));
 }
 
-void UAnyRoleButtonWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void URoleChoiceButtonWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
     Super::NativeTick(MyGeometry, InDeltaTime);
 
-    // 내 지망이 '상관없음'인지에 따라 모양을 바꾼다(바뀔 때만)
+    // 내 지망이 이 버튼인지에 따라 모양을 바꾼다(바뀔 때만)
     const APlayerController* PC = GetOwningPlayer();
     const AMyPlayerState* PS = PC ? PC->GetPlayerState<AMyPlayerState>() : nullptr;
-    const int32 Selected = (PS && PS->GetPreference() == ERolePreference::Any) ? 1 : 0;
+    const int32 Selected = (PS && PS->GetPreference() == Preference) ? 1 : 0;
     if (Selected != LastSelected)
     {
         LastSelected = Selected;
@@ -127,10 +145,10 @@ void UAnyRoleButtonWidget::NativeTick(const FGeometry& MyGeometry, float InDelta
     }
 }
 
-void UAnyRoleButtonWidget::OnClicked()
+void URoleChoiceButtonWidget::OnClicked()
 {
     if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
     {
-        PC->RequestSetPreference(ERolePreference::Any);
+        PC->RequestSetPreference(Preference);
     }
 }

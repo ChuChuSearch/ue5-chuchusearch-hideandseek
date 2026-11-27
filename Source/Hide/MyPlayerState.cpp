@@ -57,6 +57,20 @@ void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
     }
 }
 
+void AMyPlayerState::ServerSetReady_Implementation(bool bNewReady)
+{
+    if (!HasAuthority() || !IsInWaitRoom_Server() || bIsHost)
+    {
+        return;
+    }
+
+    if (bReady != bNewReady)
+    {
+        bReady = bNewReady;
+        ForceNetUpdate();
+    }
+}
+
 void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPreference)
 {
     if (!HasAuthority()) return;
@@ -112,6 +126,12 @@ void AMyPlayerState::SetHost_Server(bool bNewHost)
     if (!HasAuthority()) return;
 
     bIsHost = bNewHost;
+
+    // 방장은 준비 대상이 아니다
+    if (bIsHost)
+    {
+        bReady = false;
+    }
     ForceNetUpdate();
 }
 
@@ -173,6 +193,7 @@ void AMyPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(AMyPlayerState, RevealedScoreStats);
     DOREPLIFETIME(AMyPlayerState, bScoresRevealed);
     DOREPLIFETIME(AMyPlayerState, bRoundEliminated);
+    DOREPLIFETIME(AMyPlayerState, bReady);
 }
 
 void AMyPlayerState::RevealScores_Server()

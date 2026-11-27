@@ -35,6 +35,8 @@ private:
     void AddPlayerRow(const AMyPlayerState* PS, bool bLocal);
     UWidget* MakeChip(const FString& Text, const FLinearColor& Fill, const FLinearColor& TextColor, int32 FontSize);
 
+    void UpdateReadyArea(const TArray<const AMyPlayerState*>& Players, const AMyPlayerState* LocalPS);
+
     void SubmitChat();
 
     UFUNCTION()
@@ -53,6 +55,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> PlayerTitle;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> PlayersHint;
 
     UPROPERTY(Transient)
     TObjectPtr<UScrollBox> ChatScroll;

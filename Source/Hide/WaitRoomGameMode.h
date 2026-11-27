@@ -25,7 +25,8 @@ public:
     void StartGame(APlayerController* RequestPC);
 
     // 시작 조건(방장, 인원 수 등)을 통과해 실제로 이동을 시작했으면 true.
-    bool TryStartGame(APlayerController* RequestPC);
+    // 시작하지 못하면 OutFailReason에 이유(방장에게 채팅 안내로 보여 줌)
+    bool TryStartGame(APlayerController* RequestPC, FString* OutFailReason = nullptr);
 
     // ===== 대기실 채팅 =====
     // 플레이어가 보낸 채팅(서버에서 다듬고 너무 잦으면 버린다)

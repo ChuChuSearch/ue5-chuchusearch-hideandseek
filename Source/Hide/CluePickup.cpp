@@ -7,6 +7,11 @@
 #include "MyPlayerState.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
+#include "UObject/ConstructorHelpers.h"
 
 ACluePickup::ACluePickup()
 {
@@ -34,17 +39,102 @@ ACluePickup::ACluePickup()
     ClueWidget->SetRelativeScale3D(FVector(0.35f, 0.35f, 0.35f));
     ClueWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     ClueWidget->SetTwoSided(true);
+
+    // 빛기둥: 기본 원기둥(지름 100, 높이 100, 중심이 가운데)을 가늘고 길게 늘인다
+    BeamMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BeamMesh"));
+    BeamMesh->SetupAttachment(Root);
+    BeamMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    BeamMesh->SetGenerateOverlapEvents(false);
+    BeamMesh->SetCastShadow(false);
+    BeamMesh->SetCanEverAffectNavigation(false);
+
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BeamMeshFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (BeamMeshFinder.Succeeded())
+    {
+        BeamMesh->SetStaticMesh(BeamMeshFinder.Object);
+    }
+
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BeamMaterialFinder(TEXT("/Game/Game/Materials/M_CheatBeacon.M_CheatBeacon"));
+    if (BeamMaterialFinder.Succeeded())
+    {
+        BeamMesh->SetMaterial(0, BeamMaterialFinder.Object);
+    }
+
+    GlowLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("GlowLight"));
+    GlowLight->SetupAttachment(Root);
+    GlowLight->SetLightColor(FLinearColor(1.f, 0.82f, 0.35f));
+    GlowLight->SetAttenuationRadius(450.f);
+    GlowLight->SetCastShadows(false);
+    GlowLight->SetIntensity(GlowIntensity);
 }
 
 void ACluePickup::BeginPlay()
 {
     Super::BeginPlay();
+
+    VisualAge = 0.f;
+    IconBaseLocation = ClueWidget ? ClueWidget->GetRelativeLocation() : FVector::ZeroVector;
+
+    if (ClueWidget)
+    {
+        // 등장 연출로 0에서 커지기 시작
+        ClueWidget->SetRelativeScale3D(FVector(0.01f));
+    }
+
+    if (BeamMesh)
+    {
+        // 기둥은 단서 아이콘 위에서 시작해 위로 뻗는다(아이콘 절반 높이 + 둥실 높이 + 여유)
+        const float IconHalfHeight = ClueWidget ? ClueWidget->GetDrawSize().Y * 0.5f * IconWorldScale : 48.f;
+        const float BottomOffset = IconBaseLocation.Z + IconHalfHeight + BobHeight + 15.f;
+        BeamMesh->SetRelativeScale3D(FVector(BeamWidth / 100.f, BeamWidth / 100.f, BeamHeight / 100.f));
+        BeamMesh->SetRelativeLocation(FVector(0.f, 0.f, BottomOffset + BeamHeight * 0.5f));
+    }
+
+    if (GlowLight)
+    {
+        GlowLight->SetIntensity(GlowIntensity);
+    }
 }
 
 void ACluePickup::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    FaceToLocalPlayerCamera();
+
+    // 연출은 화면이 있는 쪽에서만 의미가 있다
+    if (GetNetMode() != NM_DedicatedServer)
+    {
+        UpdateVisualEffects(DeltaSeconds);
+        FaceToLocalPlayerCamera();
+    }
+}
+
+void ACluePickup::UpdateVisualEffects(float DeltaSeconds)
+{
+    VisualAge += DeltaSeconds;
+
+    if (ClueWidget)
+    {
+        // 등장: 살짝 넘쳤다가 제자리(easeOutBack)
+        const float PopAlpha = FMath::Clamp(VisualAge / PopInDuration, 0.f, 1.f);
+        const float C1 = 1.70158f;
+        const float C3 = C1 + 1.f;
+        const float T = PopAlpha - 1.f;
+        const float PopScale = 1.f + C3 * T * T * T + C1 * T * T;
+
+        // 등장 후 숨 쉬듯 살짝 커졌다 작아졌다
+        const float Breath = 1.f + 0.06f * FMath::Sin(VisualAge * 3.2f);
+        const float Scale = FMath::Max(0.01f, IconWorldScale * PopScale * Breath);
+        ClueWidget->SetRelativeScale3D(FVector(Scale));
+
+        const float Bob = BobHeight * FMath::Sin(VisualAge * BobSpeed);
+        ClueWidget->SetRelativeLocation(IconBaseLocation + FVector(0.f, 0.f, Bob));
+    }
+
+    if (GlowLight)
+    {
+        const float Pulse = 0.75f + 0.25f * FMath::Sin(VisualAge * 3.2f);
+        GlowLight->SetIntensity(GlowIntensity * Pulse);
+    }
 }
 
 void ACluePickup::FaceToLocalPlayerCamera()

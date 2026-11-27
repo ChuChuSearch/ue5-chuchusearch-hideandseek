@@ -21,6 +21,8 @@ class HIDE_API ASeekerProjectile : public AActor
 public:
     ASeekerProjectile();
 
+    UProjectileMovementComponent* GetProjectileMovement() const { return ProjectileMovement; }
+
 protected:
     UPROPERTY(VisibleAnywhere)
     USphereComponent* Collision = nullptr;

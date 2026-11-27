@@ -28,6 +28,7 @@
 #include "HideCameraShakes.h"
 #include "ControlsGuideWidget.h"
 #include "ReturnCountdownWidget.h"
+#include "CrosshairWidget.h"
 #include "NicknameLocalSubsystem.h"
 #include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
@@ -1213,7 +1214,10 @@ void AMyPlayerController::OnAttackReleased(const FInputActionValue& Value)
 
     AMyCharacter* MC = GetMyCharacter();
     if (!MC) return;
-    MC->RequestSeekerAttack();
+    if (MC->RequestSeekerAttack() && CrosshairWidget)
+    {
+        CrosshairWidget->NotifyFired();
+    }
 }
 
 APropBase* AMyPlayerController::GetAimPropUnderCrosshair() const
@@ -1274,6 +1278,21 @@ void AMyPlayerController::ShowGameRoomUI()
     if (!GameRoomWidgetInstance) return;
 
     GameRoomWidgetInstance->AddToViewport();
+
+    // WBP_GameRoom에 있던 예전 조준점 이미지는 숨기고 C++로 그린 조준점을 대신 띄운다
+    if (UWidget* OldCrosshair = GameRoomWidgetInstance->GetWidgetFromName(TEXT("Crosshair")))
+    {
+        OldCrosshair->SetVisibility(ESlateVisibility::Collapsed);
+    }
+    if (!CrosshairWidget)
+    {
+        CrosshairWidget = CreateWidget<UCrosshairWidget>(this, UCrosshairWidget::StaticClass());
+        if (CrosshairWidget)
+        {
+            CrosshairWidget->AddToViewport(5);
+        }
+    }
+
     RefreshGameRoomCluesFromPlayerState();
     UpdateGameRoomTeamStatus();
     UpdateGameTimeWidgets();
@@ -1289,6 +1308,12 @@ void AMyPlayerController::CloseGameRoomUI()
     {
         GameRoomWidgetInstance->RemoveFromParent();
         GameRoomWidgetInstance = nullptr;
+    }
+
+    if (CrosshairWidget)
+    {
+        CrosshairWidget->RemoveFromParent();
+        CrosshairWidget = nullptr;
     }
 }
 

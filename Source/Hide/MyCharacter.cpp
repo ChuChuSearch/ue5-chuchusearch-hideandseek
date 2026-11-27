@@ -14,6 +14,7 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
 #include "EngineUtils.h"
@@ -1072,15 +1073,36 @@ void AMyCharacter::MulticastPlayDestroyDoneSound_Implementation(FVector_NetQuant
     UGameplayStatics::PlaySoundAtLocation(this, DestroyDoneSound, Location, DestroySoundVolume, 1.0f, 0.0f, DestroySoundAttenuation);
 }
 
-void AMyCharacter::RequestSeekerAttack()
+bool AMyCharacter::RequestSeekerAttack()
 {
-    if (bEliminated) return;
-    if (!bIsSeeker) return;
+    if (bEliminated) return false;
+    if (!bIsSeeker) return false;
 
-    ServerSeekerAttack();
+    // 화면 가운데(조준점)가 가리키는 방향을 이 클라이언트에서 직접 구해 보낸다
+    FVector ViewLoc = GetActorLocation();
+    FRotator ViewRot = GetControlRotation();
+    if (APlayerController* PC = Cast<APlayerController>(Controller))
+    {
+        PC->GetPlayerViewPoint(ViewLoc, ViewRot);
+
+        int32 ViewX = 0;
+        int32 ViewY = 0;
+        PC->GetViewportSize(ViewX, ViewY);
+        FVector Origin;
+        FVector Direction;
+        if (ViewX > 0 && ViewY > 0 && PC->DeprojectScreenPositionToWorld(ViewX * 0.5f, ViewY * 0.5f, Origin, Direction))
+        {
+            ViewLoc = Origin;
+            ViewRot = Direction.Rotation();
+        }
+    }
+
+    const bool bWillFire = !bSeekerAttackOnCooldown;
+    ServerSeekerAttack(ViewLoc, ViewRot.Vector());
+    return bWillFire;
 }
 
-void AMyCharacter::ServerSeekerAttack_Implementation()
+void AMyCharacter::ServerSeekerAttack_Implementation(FVector_NetQuantize10 ClientViewLoc, FVector_NetQuantizeNormal ClientViewDir)
 {
     if (!HasAuthority())
     {
@@ -1114,14 +1136,21 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
         return;
     }
 
-    FVector ViewLoc = GetActorLocation();
-    FRotator ViewRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
-    if (APlayerController* PC = Cast<APlayerController>(Controller))
+    // 클라이언트가 보낸 카메라 정보를 쓴다. 캐릭터에서 너무 먼 값(잘못된 값)이면 서버가 아는 카메라로 대신한다.
+    constexpr float MaxClientViewDistance = 2000.f;
+    FVector ViewLoc = ClientViewLoc;
+    FVector Forward = FVector(ClientViewDir).GetSafeNormal();
+    if (Forward.IsNearlyZero() || FVector::DistSquared(ViewLoc, GetActorLocation()) > FMath::Square(MaxClientViewDistance))
     {
-        PC->GetPlayerViewPoint(ViewLoc, ViewRot);
+        FRotator ViewRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
+        ViewLoc = GetActorLocation();
+        if (APlayerController* PC = Cast<APlayerController>(Controller))
+        {
+            PC->GetPlayerViewPoint(ViewLoc, ViewRot);
+        }
+        Forward = ViewRot.Vector();
     }
 
-    const FVector Forward = ViewRot.Vector();
     const float CapsuleRadius = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleRadius() : 34.f;
     const FVector SpawnLoc = GetActorLocation() + FVector(0.f, 0.f, 60.f) + Forward * (CapsuleRadius + 8.f);
 
@@ -1129,24 +1158,34 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
     FCollisionQueryParams AimParams(SCENE_QUERY_STAT(SeekerAimTrace), true);
     AimParams.AddIgnoredActor(this);
 
+    // 앞서 쏜 투사체가 조준선 위에 있으면 그걸 목표로 잡아 엉뚱한 방향으로 나가므로 무시한다
+    for (TActorIterator<ASeekerProjectile> It(GetWorld()); It; ++It)
+    {
+        AimParams.AddIgnoredActor(*It);
+    }
+
     // A third-person camera can sit behind nearby level geometry. Starting the aim
     // trace in front of the projectile spawn plane prevents that geometry from
     // becoming a target behind the character.
     const float DistanceToSpawnPlane = FVector::DotProduct(SpawnLoc - ViewLoc, Forward);
     const FVector AimTraceStart = ViewLoc + Forward * FMath::Max(DistanceToSpawnPlane + 10.f, 0.f);
     const FVector AimTraceEnd = ViewLoc + Forward * 10000.f;
+    // 투사체(WorldDynamic)가 실제로 부딪히는 것과 같은 기준으로 목표를 찾는다.
+    // (Visibility 채널은 캐릭터 캡슐 등을 통과해서, 그 뒤 벽을 목표로 잡는 경우가 있었다)
     const bool bAimHit = GetWorld()->LineTraceSingleByChannel(
         AimHit,
         AimTraceStart,
         AimTraceEnd,
-        ECC_Visibility,
+        ECC_WorldDynamic,
         AimParams
     );
 
-    FVector AimPoint = bAimHit ? AimHit.ImpactPoint : AimTraceEnd;
+    // 아무것도 없는 곳(하늘 등)을 조준하면 적당한 거리의 점을 목표로 한다
+    constexpr float EmptyAimDistance = 3000.f;
+    FVector AimPoint = bAimHit ? AimHit.ImpactPoint : ViewLoc + Forward * EmptyAimDistance;
     if (FVector::DotProduct(AimPoint - SpawnLoc, Forward) <= 1.f)
     {
-        AimPoint = SpawnLoc + Forward * 10000.f;
+        AimPoint = SpawnLoc + Forward * EmptyAimDistance;
     }
 
     const FRotator SpawnRot = (AimPoint - SpawnLoc).Rotation();
@@ -1162,6 +1201,27 @@ void AMyCharacter::ServerSeekerAttack_Implementation()
         SpawnRot,
         Params
     );
+
+    // 투사체는 중력을 받아 포물선으로 날아간다. 그대로 쏘면 멀수록 조준점 아래로 떨어지므로,
+    // 같은 속도로 조준한 지점에 떨어지도록 살짝 위로 쏜다. (닿을 수 없는 거리면 그냥 똑바로 쏜다)
+    if (Proj)
+    {
+        if (UProjectileMovementComponent* Move = Proj->GetProjectileMovement())
+        {
+            const float GravityZ = Move->GetGravityZ();
+            const float Speed = Move->Velocity.Size();
+            FVector TossVelocity;
+            UGameplayStatics::FSuggestProjectileVelocityParameters TossParams(this, SpawnLoc, AimPoint, Speed);
+            TossParams.OverrideGravityZ = GravityZ;
+            TossParams.TraceOption = ESuggestProjVelocityTraceOption::DoNotTrace;
+            if (FMath::Abs(GravityZ) > KINDA_SMALL_NUMBER && Speed > KINDA_SMALL_NUMBER &&
+                UGameplayStatics::SuggestProjectileVelocity(TossParams, TossVelocity))
+            {
+                Move->Velocity = TossVelocity;
+                Proj->SetActorRotation(TossVelocity.Rotation());
+            }
+        }
+    }
 
     bSeekerAttackOnCooldown = true;
 

@@ -74,7 +74,10 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "DestroySkill")
     float DestroyCooldownSeconds = 5.0f;
 
-    void RequestSeekerAttack(); // PC에서 호출 (좌클릭)
+    // PC에서 호출 (좌클릭). 실제로 발사 요청을 보냈으면 true(조준점 반동 표시용).
+    bool RequestSeekerAttack();
+
+    bool IsSeekerAttackOnCooldown() const { return bSeekerAttackOnCooldown; }
 
     UPROPERTY(EditDefaultsOnly, Category = "Attack")
     TSubclassOf<ASeekerProjectile> SeekerProjectileClass = nullptr;
@@ -282,8 +285,10 @@ private:
     UAudioComponent* DestroyProgressAudio = nullptr;
 
     // --- Seeker attack RPC/State ---
+    // 클라이언트가 실제로 보고 있던 카메라 위치/방향을 함께 보낸다.
+    // (서버가 가진 원격 플레이어 카메라 정보는 조금 늦어서 그대로 쓰면 조준점과 다른 곳으로 나간다)
     UFUNCTION(Server, Reliable)
-    void ServerSeekerAttack();
+    void ServerSeekerAttack(FVector_NetQuantize10 ClientViewLoc, FVector_NetQuantizeNormal ClientViewDir);
 
     void EndSeekerAttackCooldown();
 

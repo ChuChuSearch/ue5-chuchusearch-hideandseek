@@ -26,6 +26,7 @@ class UHitFlashWidget;
 class UEliminationNoticeWidget;
 class UControlsGuideWidget;
 class UReturnCountdownWidget;
+class UCrosshairWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
@@ -263,6 +264,10 @@ private:
     // 결과 화면 위에 띄우는 대기실 복귀 카운트다운 + 방장 버튼
     UPROPERTY(Transient)
     UReturnCountdownWidget* ReturnCountdownWidget = nullptr;
+
+    // 화면 중앙 조준점(게임 화면 UI와 같이 띄우고 닫는다)
+    UPROPERTY(Transient)
+    UCrosshairWidget* CrosshairWidget = nullptr;
 
     // ===== 페이즈 소리 / 배경음 (각 클라 로컬에서만 재생) =====
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")

@@ -21,6 +21,7 @@
 #include "Components/WidgetSwitcher.h"
 #include "GameFramework/GameUserSettings.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "Scalability.h"
 #include "Sound/SoundBase.h"
 #include "Styling/CoreStyle.h"
@@ -54,6 +55,18 @@ namespace
     const FLinearColor TabIdleHover = Hex(255, 232, 200);
     const FLinearColor ListHover = Hex(255, 226, 206);
     const FLinearColor ListSelected = Hex(255, 206, 196);
+
+    // 게임 나가기 버튼: 평소엔 갈색(되돌리기 버튼과 같은 톤), 확인 대기 중엔 진한 빨강
+    const FLinearColor LeaveIdleFill = Hex(196, 160, 120);
+    const FLinearColor LeaveIdleHover = Hex(214, 180, 140);
+    const FLinearColor LeaveIdlePressed = Hex(170, 132, 94);
+    const FLinearColor LeaveIdleOutline = Hex(140, 100, 60);
+    const FLinearColor LeaveWarnFill = Hex(226, 76, 76);
+    const FLinearColor LeaveWarnHover = Hex(240, 100, 96);
+    const FLinearColor LeaveWarnPressed = Hex(186, 50, 56);
+    const FLinearColor LeaveWarnOutline = Hex(150, 30, 40);
+
+    constexpr float LeaveConfirmSeconds = 4.f;
 
     FSlateBrush RoundBox(const FLinearColor& Fill, float Radius, const FLinearColor& Line = FLinearColor::Transparent, float LineWidth = 0.f, const FVector2f& Size = FVector2f::ZeroVector)
     {
@@ -364,7 +377,30 @@ void USettingsWidget::BuildTree()
     // ----- 변경 확인 띠 -----
     BuildConfirmBanner(Box);
 
-    // ----- 닫기 버튼: START 버튼 같은 코랄 알약 모양 -----
+    // ----- 아래 버튼 줄: [게임 나가기] [닫기] -----
+    UHorizontalBox* ButtonRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("ButtonRow"));
+
+    // 게임 나가기: 실수로 누르지 않게 갈색 버튼 + 한 번 더 눌러야 나간다
+    LeaveButton = MakeTextButton(TEXT("게임 나가기"), LeaveIdleFill, LeaveIdleHover, LeaveIdlePressed, LeaveIdleOutline, 200.f, 54.f, 24);
+    LeaveButtonText = Cast<UTextBlock>(LeaveButton->GetContent());
+    LeaveButton->OnClicked.AddDynamic(this, &USettingsWidget::OnLeaveClicked);
+
+    LeaveSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("LeaveSize"));
+    LeaveSize->SetWidthOverride(200.f);
+    LeaveSize->SetHeightOverride(54.f);
+    LeaveSize->SetContent(LeaveButton);
+    if (UHorizontalBoxSlot* S = ButtonRow->AddChildToHorizontalBox(LeaveSize))
+    {
+        S->SetPadding(FMargin(0.f, 0.f, 16.f, 0.f));
+    }
+
+    // 이미 접속 화면이면 나갈 곳이 없다
+    if (UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("ConnectMap"))
+    {
+        LeaveSize->SetVisibility(ESlateVisibility::Collapsed);
+    }
+
+    // 닫기 버튼: START 버튼 같은 코랄 알약 모양
     UButton* Close = MakeTextButton(TEXT("닫기"), AccentColor, AccentHover, AccentDark, AccentDark, 200.f, 54.f, 24);
     Close->OnClicked.AddDynamic(this, &USettingsWidget::OnCloseClicked);
 
@@ -372,21 +408,22 @@ void USettingsWidget::BuildTree()
     CloseSize->SetWidthOverride(200.f);
     CloseSize->SetHeightOverride(54.f);
     CloseSize->SetContent(Close);
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(CloseSize))
+    ButtonRow->AddChildToHorizontalBox(CloseSize);
+
+    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(ButtonRow))
     {
         S->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
         S->SetHorizontalAlignment(HAlign_Center);
     }
 
-    UTextBlock* Hint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Hint"));
-    Hint->SetText(FText::FromString(TEXT("ESC / F10 으로 열고 닫기 · Q / E 로 탭 이동")));
-    Hint->SetFont(MakeFont(false, 14));
-    Hint->SetColorAndOpacity(FSlateColor(LabelColor.CopyWithNewOpacity(0.6f)));
-    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(Hint))
+    HintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Hint"));
+    HintText->SetFont(MakeFont(false, 14));
+    if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(HintText))
     {
         S->SetPadding(FMargin(0.f, 12.f, 0.f, 0.f));
         S->SetHorizontalAlignment(HAlign_Center);
     }
+    SetLeaveConfirm(false);
 
     RefreshAudio();
     RefreshGraphics();
@@ -1301,6 +1338,16 @@ void USettingsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
         RefreshGraphics();
     }
 
+    // 나가기 확인은 잠시 뒤 저절로 풀린다
+    if (bLeaveConfirm)
+    {
+        LeaveConfirmRemain -= InDeltaTime;
+        if (LeaveConfirmRemain <= 0.f)
+        {
+            SetLeaveConfirm(false);
+        }
+    }
+
     if (!bPendingConfirm)
     {
         return;
@@ -1317,11 +1364,71 @@ void USettingsWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     UpdateConfirmBanner();
 }
 
+// ===== 게임 나가기 =====
+
+void USettingsWidget::SetLeaveConfirm(bool bConfirm)
+{
+    bLeaveConfirm = bConfirm;
+    LeaveConfirmRemain = bConfirm ? LeaveConfirmSeconds : 0.f;
+
+    if (LeaveButton)
+    {
+        const FLinearColor Fill = bConfirm ? LeaveWarnFill : LeaveIdleFill;
+        const FLinearColor Hover = bConfirm ? LeaveWarnHover : LeaveIdleHover;
+        const FLinearColor Pressed = bConfirm ? LeaveWarnPressed : LeaveIdlePressed;
+        FButtonStyle Style = LeaveButton->GetStyle();
+        Style.SetNormal(RoundBox(Fill, 27.f, FLinearColor::White, 3.f));
+        Style.SetHovered(RoundBox(Hover, 27.f, FLinearColor::White, 3.f));
+        Style.SetPressed(RoundBox(Pressed, 27.f, FLinearColor::White, 3.f));
+        LeaveButton->SetStyle(Style);
+    }
+
+    if (LeaveButtonText)
+    {
+        LeaveButtonText->SetText(FText::FromString(bConfirm ? TEXT("정말 나가기") : TEXT("게임 나가기")));
+        LeaveButtonText->SetFont(MakeFont(true, 24, bConfirm ? LeaveWarnOutline : LeaveIdleOutline, 2));
+    }
+
+    if (HintText)
+    {
+        if (bConfirm)
+        {
+            const bool bHost = GetWorld() && GetWorld()->GetNetMode() == NM_ListenServer;
+            HintText->SetText(FText::FromString(bHost
+                ? TEXT("방장이 나가면 방이 닫히고 모두 접속 화면으로 돌아가요. 한 번 더 누르면 나가요")
+                : TEXT("한 번 더 누르면 접속 화면으로 나가요")));
+            HintText->SetColorAndOpacity(FSlateColor(LeaveWarnPressed));
+        }
+        else
+        {
+            HintText->SetText(FText::FromString(TEXT("ESC / F10 으로 열고 닫기 · Q / E 로 탭 이동")));
+            HintText->SetColorAndOpacity(FSlateColor(LabelColor.CopyWithNewOpacity(0.6f)));
+        }
+    }
+}
+
+void USettingsWidget::OnLeaveClicked()
+{
+    if (!bLeaveConfirm)
+    {
+        SetLeaveConfirm(true);
+        return;
+    }
+
+    SetLeaveConfirm(false);
+    if (OwnerPC)
+    {
+        OwnerPC->LeaveToConnectScreen();
+    }
+}
+
 void USettingsWidget::OnKeepClicked() { KeepGraphics(); }
 void USettingsWidget::OnRevertClicked() { RevertGraphics(); }
 
 void USettingsWidget::HandleClosing()
 {
+    SetLeaveConfirm(false);
+
     // 유지를 누르지 않고 닫으면 확인하지 않은 것으로 보고 되돌린다
     RevertGraphics();
 }

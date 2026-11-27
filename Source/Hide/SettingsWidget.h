@@ -164,6 +164,27 @@ private:
     UFUNCTION()
     void OnCloseClicked();
 
+    UFUNCTION()
+    void OnLeaveClicked();
+
+    // 게임 나가기 버튼의 "한 번 더 누르면 나가요" 상태
+    void SetLeaveConfirm(bool bConfirm);
+
+    UPROPERTY(Transient)
+    TObjectPtr<UButton> LeaveButton;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> LeaveButtonText;
+
+    UPROPERTY(Transient)
+    TObjectPtr<class USizeBox> LeaveSize;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> HintText;
+
+    bool bLeaveConfirm = false;
+    float LeaveConfirmRemain = 0.f;
+
     UPROPERTY(Transient)
     TObjectPtr<AMyPlayerController> OwnerPC;
 

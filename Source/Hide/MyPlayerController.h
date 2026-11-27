@@ -62,6 +62,10 @@ public:
     void ToggleSettingsMenu();
     void CloseSettingsMenu();
 
+    // 설정 창의 "게임 나가기": 지금 방(대기실/게임)에서 나가 접속 화면으로 돌아간다.
+    // 방장(리슨 서버)이 나가면 방이 닫히고 다른 플레이어는 "방장과의 연결이 끊어졌어요" 안내를 본다.
+    void LeaveToConnectScreen();
+
     // 누르고 있던 공격 입력(길게 누르기 포함)을 취소한다. 설정 창을 열고 닫을 때 사용.
     void CancelAttackInput();
 
@@ -354,6 +358,10 @@ private:
 
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
     float MusicVolume = 0.5f;
+
+    // 대기실 배경음만 따로 더 키운다(MusicVolume에 곱함). 대기실은 다른 소리가 거의 없어 0.5로는 너무 작게 들렸다.
+    UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
+    float WaitRoomMusicVolumeScale = 2.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
     float MusicFadeSeconds = 1.0f;

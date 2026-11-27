@@ -550,6 +550,21 @@ void AMyPlayerController::CancelAttackInput()
     AttackHoldTarget = nullptr;
 }
 
+void AMyPlayerController::LeaveToConnectScreen()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    // 설정 저장과 창 정리는 평소 닫을 때와 같은 경로로
+    CloseSettingsMenu();
+    StopMusic();
+
+    // 접속 화면 맵을 열면 서버와의 연결이 끊기고(방장이면 방이 닫힌다) 새 맵의 UI가 뜬다
+    UGameplayStatics::OpenLevel(this, FName(TEXT("ConnectMap")));
+}
+
 void AMyPlayerController::CloseSettingsMenu()
 {
     if (!SettingsWidget)
@@ -2571,10 +2586,11 @@ void AMyPlayerController::PlayMusic(USoundBase* Music)
     }
 
     // 레벨 이동 시 자동 정리되도록 bPersistAcrossLevelTransition=false
-    MusicComponent = UGameplayStatics::SpawnSound2D(this, Music, MusicVolume, 1.f, 0.f, nullptr, false, true);
+    const float TrackVolume = MusicVolume * (Music == WaitRoomMusic ? WaitRoomMusicVolumeScale : 1.f);
+    MusicComponent = UGameplayStatics::SpawnSound2D(this, Music, TrackVolume, 1.f, 0.f, nullptr, false, true);
     if (MusicComponent && MusicFadeSeconds > 0.f)
     {
-        MusicComponent->FadeIn(MusicFadeSeconds, MusicVolume);
+        MusicComponent->FadeIn(MusicFadeSeconds, TrackVolume);
     }
     CurrentMusic = Music;
 }

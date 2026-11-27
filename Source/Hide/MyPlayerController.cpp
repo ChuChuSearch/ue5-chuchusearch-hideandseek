@@ -31,6 +31,7 @@
 #include "CrosshairWidget.h"
 #include "ScoreboardWidget.h"
 #include "GameTimelineBar.h"
+#include "ResultScoreWidget.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -2086,6 +2087,18 @@ void AMyPlayerController::ShowGameResultLocal(EFinalRole WinningRole)
     {
         ReturnCountdownWidget->AddToViewport(1001);
         bShowMouseCursor = true;
+    }
+
+    // 결과 영상 위 오른쪽에 이번 판 점수(MVP, 팀별 순위, 칭호). 결과 화면은 UI 전용 입력이라 Tab 점수판이 안 열린다.
+    HideScoreboard();
+    if (!ResultScoreWidget)
+    {
+        ResultScoreWidget = CreateWidget<UResultScoreWidget>(this, UResultScoreWidget::StaticClass());
+    }
+    if (ResultScoreWidget && !ResultScoreWidget->IsInViewport())
+    {
+        ResultScoreWidget->SetWinningRole(WinningRole);
+        ResultScoreWidget->AddToViewport(1001);
     }
 
     OnGameResultReceived(WinningRole, bWon);

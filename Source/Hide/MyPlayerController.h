@@ -28,6 +28,7 @@ class UControlsGuideWidget;
 class UReturnCountdownWidget;
 class UCrosshairWidget;
 class UScoreboardWidget;
+class UResultScoreWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
@@ -272,6 +273,10 @@ private:
     // 결과 화면 위에 띄우는 대기실 복귀 카운트다운 + 방장 버튼
     UPROPERTY(Transient)
     UReturnCountdownWidget* ReturnCountdownWidget = nullptr;
+
+    // 결과 화면 오른쪽 "이번 판 결과" 카드(MVP, 팀별 순위, 칭호)
+    UPROPERTY(Transient)
+    UResultScoreWidget* ResultScoreWidget = nullptr;
 
     // 화면 중앙 조준점(게임 화면 UI와 같이 띄우고 닫는다)
     UPROPERTY(Transient)

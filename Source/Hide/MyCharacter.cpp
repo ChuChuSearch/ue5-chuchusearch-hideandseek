@@ -73,6 +73,16 @@ void AMyCharacter::RequestReleaseProp()
     ServerReleaseProp();
 }
 
+bool AMyCharacter::CanBeBaseForCharacter(APawn* Pawn) const
+{
+    if (PossessedProp)
+    {
+        return false;
+    }
+
+    return Super::CanBeBaseForCharacter(Pawn);
+}
+
 void AMyCharacter::ForceReleasePossessedProp_Server()
 {
     if (!HasAuthority()) return;
@@ -642,7 +652,9 @@ void AMyCharacter::ApplyPossessionCollision(APropBase* NewProp)
         }
 
         Capsule->SetCollisionEnabled(OriginalCapsuleCollisionEnabled);
-        Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+        // 다른 플레이어와의 충돌은 캡슐이 맡는다. 캐릭터 이동은 루트 캡슐로만 앞을 검사하므로,
+        // 붙은 물체 메시가 대신 막으면 그 메시가 상대 캡슐을 파고들어 상대가 밀려나 버린다.
+        Capsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
         Capsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
         Capsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
     }

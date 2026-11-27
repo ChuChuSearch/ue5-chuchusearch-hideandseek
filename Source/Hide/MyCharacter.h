@@ -20,6 +20,10 @@ public:
     AMyCharacter();
 
     virtual void BeginPlay() override;
+
+    // 물체에 빙의한 동안에는 다른 플레이어가 머리 위(커진 캡슐)에 올라타 실려 가지 않게 한다
+    virtual bool CanBeBaseForCharacter(APawn* Pawn) const override;
+
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 

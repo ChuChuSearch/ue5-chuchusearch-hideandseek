@@ -18,6 +18,9 @@ public:
     virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     virtual void BeginPlay() override;
 
+    // 빙의 중인 물체 위에 올라탄 플레이어가 같이 실려 가지 않도록 바닥으로 쓰지 못하게 한다
+    virtual bool CanBeBaseForCharacter(APawn* Pawn) const override;
+
     bool TryClaim(AMyCharacter* ByCharacter);
     void ReleaseClaim(AMyCharacter* ByCharacter);
 

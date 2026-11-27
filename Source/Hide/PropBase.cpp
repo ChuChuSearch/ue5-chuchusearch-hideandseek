@@ -52,6 +52,16 @@ void APropBase::BeginPlay()
     }
 }
 
+bool APropBase::CanBeBaseForCharacter(APawn* Pawn) const
+{
+    if (bPossessedNet || ClaimingCharacter)
+    {
+        return false;
+    }
+
+    return Super::CanBeBaseForCharacter(Pawn);
+}
+
 void APropBase::EnsurePropId_Server()
 {
     if (!HasAuthority() || !PropId.IsNone())
@@ -152,8 +162,9 @@ void APropBase::SetPossessedState(bool bPossessed)
         // 카메라 붐이 오브젝트에 막히지 않게 해야 1인칭처럼 안 변함
         StaticMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 
-        // Use the mesh for close contact with other players; the owner ignores this actor.
-        StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        // 다른 플레이어와의 충돌은 빙의한 캐릭터의 캡슐이 맡는다.
+        // 메시가 Pawn을 막으면 캡슐을 따라 움직이며 상대 캡슐을 파고들어 상대를 밀어낸다.
+        StaticMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
         StaticMesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
     }
     else

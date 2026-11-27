@@ -27,6 +27,7 @@ class UEliminationNoticeWidget;
 class UControlsGuideWidget;
 class UReturnCountdownWidget;
 class UCrosshairWidget;
+class UScoreboardWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
@@ -118,6 +119,13 @@ public:
 
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
+
+    // 같은 팀 점수(서버가 0.5초마다 보냄). 상대 팀 점수는 게임이 끝날 때까지 받지 않는다.
+    UFUNCTION(Client, Unreliable)
+    void ClientReceiveTeamScores(const TArray<FTeamScoreEntry>& Entries);
+
+    // 점수판에 보여도 되는 점수. 모르는(가려진) 점수면 false.
+    bool GetVisibleScoreStats(const AMyPlayerState* PS, FHideScoreStats& OutStats) const;
 
     void ShowGameResultLocal(EFinalRole WinningRole);
 
@@ -391,6 +399,18 @@ private:
 
     void UpdateControlsGuide();
     void ToggleControlsGuide();
+
+    // ===== 점수판(게임 맵에서 Tab을 누르고 있는 동안) =====
+    UPROPERTY(Transient)
+    UScoreboardWidget* ScoreboardWidget = nullptr;
+
+    void ShowScoreboard();
+    void HideScoreboard();
+
+    // WBP_GameRoom 위쪽 프레임 아래 빈 홈에 게임 전체 타임라인 바를 끼워 넣는다
+    void AttachTimelineBar();
+
+    TMap<TWeakObjectPtr<const APlayerState>, FHideScoreStats> TeamScoreCache;
 
     // ===== 치트(테스트용, Shipping 빌드에서는 동작 안 함) =====
     // Ctrl+Shift+C: 단서가 배치된 프롭 테두리 강조 + 비밀번호 정답 표시 (다시 누르면 끔)

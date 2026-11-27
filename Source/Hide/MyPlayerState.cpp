@@ -79,6 +79,8 @@ void AMyPlayerState::ExportReconnectData(FReconnectPlayerData& OutData) const
     OutData.LobbyJoinOrder = LobbyJoinOrder;
     OutData.CollectedClueNumbers = CollectedClueNumbers;
     OutData.PositionedClueNumbers = PositionedClueNumbers;
+    OutData.ScoreStats = ScoreStats;
+    OutData.bRoundEliminated = bRoundEliminated;
 }
 
 void AMyPlayerState::ImportReconnectData_Server(const FReconnectPlayerData& InData)
@@ -92,6 +94,8 @@ void AMyPlayerState::ImportReconnectData_Server(const FReconnectPlayerData& InDa
     LobbyJoinOrder = InData.LobbyJoinOrder;
     CollectedClueNumbers = InData.CollectedClueNumbers;
     PositionedClueNumbers = InData.PositionedClueNumbers;
+    ScoreStats = InData.ScoreStats;
+    bRoundEliminated = InData.bRoundEliminated;
 
     ForceNetUpdate();
     NotifyClueCollectionChanged();
@@ -159,6 +163,107 @@ void AMyPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLi
     DOREPLIFETIME(AMyPlayerState, LobbyJoinOrder);
     DOREPLIFETIME(AMyPlayerState, CollectedClueNumbers);
     DOREPLIFETIME_CONDITION(AMyPlayerState, PositionedClueNumbers, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(AMyPlayerState, ScoreStats, COND_OwnerOnly);
+    DOREPLIFETIME(AMyPlayerState, RevealedScoreStats);
+    DOREPLIFETIME(AMyPlayerState, bScoresRevealed);
+    DOREPLIFETIME(AMyPlayerState, bRoundEliminated);
+}
+
+void AMyPlayerState::RevealScores_Server()
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    RevealedScoreStats = ScoreStats;
+    bScoresRevealed = true;
+    ForceNetUpdate();
+}
+
+void AMyPlayerState::MarkEliminated_Server()
+{
+    if (!HasAuthority() || bRoundEliminated)
+    {
+        return;
+    }
+
+    bRoundEliminated = true;
+    ForceNetUpdate();
+}
+
+bool AMyPlayerState::AddScore_Server(EScoreReason Reason)
+{
+    if (!HasAuthority() || IsInWaitRoom_Server() || bScoresRevealed)
+    {
+        return false;
+    }
+
+    int32 Points = 0;
+    switch (Reason)
+    {
+    case EScoreReason::SeekerHit:
+        ++ScoreStats.Hits;
+        Points = ScoreSeekerHit;
+        break;
+
+    case EScoreReason::SeekerEliminate:
+        ++ScoreStats.Eliminations;
+        Points = ScoreSeekerEliminate;
+        break;
+
+    case EScoreReason::ClueCollected:
+        ++ScoreStats.Clues;
+        Points = ScoreClue;
+        break;
+
+    case EScoreReason::PasswordSolved:
+        if (ScoreStats.bPasswordSolved)
+        {
+            return false;
+        }
+        ScoreStats.bPasswordSolved = true;
+        Points = ScorePassword;
+        break;
+
+    case EScoreReason::CloseHide:
+        Points = FMath::Min(ScoreCloseHidePerSecond, MaxCloseHidePoints - ScoreStats.CloseHidePoints);
+        if (Points <= 0)
+        {
+            return false;
+        }
+        ScoreStats.CloseHidePoints += Points;
+        break;
+
+    case EScoreReason::NearMiss:
+        if (ScoreStats.NearMisses >= MaxNearMisses)
+        {
+            return false;
+        }
+        ++ScoreStats.NearMisses;
+        Points = ScoreNearMiss;
+        break;
+
+    case EScoreReason::DecoyHit:
+        if (ScoreStats.DecoyHits >= MaxDecoyHits)
+        {
+            return false;
+        }
+        ++ScoreStats.DecoyHits;
+        Points = ScoreDecoyHit;
+        break;
+
+    case EScoreReason::Win:
+        Points = ScoreWin;
+        break;
+
+    default:
+        return false;
+    }
+
+    ScoreStats.Score += Points;
+    ForceNetUpdate();
+    return true;
 }
 
 bool AMyPlayerState::HasCollectedClue(int32 InClueNumber) const
@@ -177,6 +282,7 @@ bool AMyPlayerState::CollectClue_Server(int32 InClueNumber)
     }
 
     CollectedClueNumbers.Add(InClueNumber);
+    AddScore_Server(EScoreReason::ClueCollected);
 
     if (const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
     {

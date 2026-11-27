@@ -11,7 +11,9 @@
 #include "Sound/SoundAttenuation.h"
 
 #include "MyCharacter.h"
+#include "MyPlayerState.h"
 #include "PropBase.h"
+#include "EngineUtils.h"
 #include "MyGameState.h"
 #include "HideCameraShakes.h"
 #include "GameFramework/PlayerController.h"
@@ -99,6 +101,47 @@ namespace
     }
 }
 
+void ASeekerProjectile::AwardNearMisses(const FVector& ImpactPoint, const AMyCharacter* HitRunner) const
+{
+    if (!HasAuthority() || !GetWorld())
+    {
+        return;
+    }
+
+    const AMyCharacter* Shooter = Cast<AMyCharacter>(GetInstigator());
+    if (!Shooter || !Shooter->IsSeeker())
+    {
+        return;
+    }
+
+    // 맞지 않은 숨는 사람 중 떨어진 곳 가까이에 있던 사람에게 아슬아슬 회피 점수
+    for (TActorIterator<AMyCharacter> It(GetWorld()); It; ++It)
+    {
+        AMyCharacter* Runner = *It;
+        if (!IsValid(Runner) || Runner == HitRunner || Runner->IsSeeker() || Runner->IsEliminated())
+        {
+            continue;
+        }
+
+        FVector RunnerLoc = Runner->GetActorLocation();
+        if (const APropBase* Hidden = Runner->GetPossessedProp())
+        {
+            FVector Origin;
+            FVector Extent;
+            Hidden->GetActorBounds(true, Origin, Extent);
+            RunnerLoc = Origin;
+        }
+
+        if (FVector::DistSquared(RunnerLoc, ImpactPoint) <= FMath::Square(NearMissRadius))
+        {
+            if (AMyPlayerState* PS = Runner->GetPlayerState<AMyPlayerState>())
+            {
+                PS->AddScore_Server(EScoreReason::NearMiss);
+            }
+        }
+    }
+}
+
 void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
     UPrimitiveComponent*, FVector, const FHitResult& Hit)
 {
@@ -108,9 +151,13 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
         return;
     }
 
+    AMyCharacter* Shooter = Cast<AMyCharacter>(GetInstigator());
+
     if (AMyCharacter* HitChar = Cast<AMyCharacter>(OtherActor))
     {
         const bool bIsRunnerTarget = !HitChar->IsSeeker() && !HitChar->IsEliminated();
+
+        AwardNearMisses(Hit.ImpactPoint, bIsRunnerTarget ? HitChar : nullptr);
 
         if (bIsRunnerTarget)
         {
@@ -122,7 +169,7 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
             }
             else
             {
-                HitChar->ApplySeekerHit_Server();
+                HitChar->ApplySeekerHit_Server(Shooter);
             }
         }
 
@@ -134,20 +181,24 @@ void ASeekerProjectile::OnHit(UPrimitiveComponent*, AActor* OtherActor,
     if (APropBase* Prop = Cast<APropBase>(OtherActor))
     {
         // 러너가 빙의 중인 프롭을 맞힌 경우에만(빈 프롭은 흔들지 않음)
-        if (const AMyCharacter* Possessor = Prop->GetClaimingCharacter())
+        AMyCharacter* HitRunner = nullptr;
+        if (AMyCharacter* Possessor = Prop->GetClaimingCharacter())
         {
             if (!Possessor->IsSeeker() && !Possessor->IsEliminated())
             {
                 ShakeShooterCamera(this);
+                HitRunner = Possessor;
             }
         }
 
+        AwardNearMisses(Hit.ImpactPoint, HitRunner);
         MulticastSpawnImpactEffect(true, Hit.ImpactPoint, Hit.ImpactNormal);
         DestroyHitProp(Prop);
         Destroy();
         return;
     }
 
+    AwardNearMisses(Hit.ImpactPoint, nullptr);
     MulticastSpawnImpactEffect(false, Hit.ImpactPoint, Hit.ImpactNormal);
     Destroy();
 }
@@ -205,6 +256,10 @@ void ASeekerProjectile::DestroyHitProp(APropBase* Prop)
     {
         PossessingCharacter->HandlePossessedPropDestroyed_Server(Prop);
     }
+    else
+    {
+        Prop->AwardDecoyHit_Server();
+    }
 
     if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
     {
@@ -218,6 +273,6 @@ void ASeekerProjectile::DestroyHitProp(APropBase* Prop)
         && !PossessingCharacter->IsSeeker()
         && !PossessingCharacter->IsEliminated())
     {
-        PossessingCharacter->ApplySeekerHit_Server();
+        PossessingCharacter->ApplySeekerHit_Server(Cast<AMyCharacter>(GetInstigator()));
     }
 }

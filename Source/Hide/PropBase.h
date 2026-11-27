@@ -45,6 +45,12 @@ public:
     UFUNCTION(BlueprintCallable)
     FName GetPropId() const { return PropId; }
 
+    // 유령이 놓은 물체면 놓은 플레이어를 기억한다(서버 전용, 속임수 점수용)
+    void SetPlacedByGhost_Server(APlayerState* InPlacer);
+
+    // 술래가 이 물체를 부쉈을 때 호출. 아무도 숨어 있지 않은, 유령이 놓은 물체면 놓은 사람에게 속임수 점수를 준다.
+    void AwardDecoyHit_Server();
+
 protected:
     UPROPERTY(VisibleAnywhere)
     UStaticMeshComponent* StaticMesh = nullptr;
@@ -81,6 +87,8 @@ private:
     bool SweepDown_Server(float Distance, float& OutMoveDistance) const;
     void TickDrop_Server();
     void StopDrop_Server();
+
+    TWeakObjectPtr<APlayerState> PlacedByGhost;
 
     FTimerHandle TH_Drop;
     float DropVelocity = 0.f;

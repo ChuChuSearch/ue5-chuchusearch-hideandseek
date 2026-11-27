@@ -11,6 +11,7 @@ class AMyCharacter;
 class APlayerController;
 class AGhostCharacter;
 class APropBase;
+class USoundBase;
 
 UCLASS()
 class HIDE_API AMyGameMode : public AGameModeBase
@@ -163,4 +164,32 @@ protected:
     bool bReturningToWaitRoom = false;
     TSet<TWeakObjectPtr<APropBase>> Phase1PossessedProps;
     TSet<TWeakObjectPtr<APropBase>> BannedPhase1Props;
+
+    // ===== 점수 =====
+    // 물체로 숨은 사람 주변 이 거리(cm) 안에서 술래가 볼 수 있으면 "코앞에서 숨기" 점수
+    UPROPERTY(EditDefaultsOnly, Category = "Score", meta = (ClampMin = "0.0"))
+    float CloseHideRadius = 500.f;
+
+    FTimerHandle TH_CloseHideScore;
+    void TickCloseHideScore();
+    void AwardWinBonus(EFinalRole WinningRole);
+
+    // 게임 중에는 상대 팀 점수를 숨기므로, 팀원 점수는 같은 팀 플레이어에게만 보낸다
+    FTimerHandle TH_TeamScores;
+    void PushTeamScores();
+
+    // ===== 시간 끌기 방지 =====
+    // 피버 타임 동안 살아 있는 숨는 사람 위치에서 주기적으로 소리를 낸다(멀리 도망가 버티기 방지)
+    UPROPERTY(EditDefaultsOnly, Category = "Anti Stall")
+    TObjectPtr<USoundBase> StallTauntSound;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Anti Stall", meta = (ClampMin = "1.0"))
+    float StallTauntIntervalSeconds = 10.f;
+
+    // 피버 타임 시작 후 첫 소리까지(초)
+    UPROPERTY(EditDefaultsOnly, Category = "Anti Stall", meta = (ClampMin = "0.0"))
+    float StallTauntFirstDelaySeconds = 3.f;
+
+    FTimerHandle TH_StallTaunt;
+    void PlayStallTaunts();
 };

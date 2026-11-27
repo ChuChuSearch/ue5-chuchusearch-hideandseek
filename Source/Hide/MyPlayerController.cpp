@@ -29,6 +29,12 @@
 #include "ControlsGuideWidget.h"
 #include "ReturnCountdownWidget.h"
 #include "CrosshairWidget.h"
+#include "ScoreboardWidget.h"
+#include "GameTimelineBar.h"
+#include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
+#include "Engine/Texture2D.h"
 #include "NicknameLocalSubsystem.h"
 #include "Components/EditableTextBox.h"
 #include "Sound/SoundClass.h"
@@ -145,6 +151,8 @@ void AMyPlayerController::SetupInputComponent()
         InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
         InputComponent->BindKey(EKeys::F10, IE_Pressed, this, &AMyPlayerController::ToggleSettingsMenu);
         InputComponent->BindKey(EKeys::H, IE_Pressed, this, &AMyPlayerController::ToggleControlsGuide);
+        InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AMyPlayerController::ShowScoreboard);
+        InputComponent->BindKey(EKeys::Tab, IE_Released, this, &AMyPlayerController::HideScoreboard);
 
 #if !UE_BUILD_SHIPPING
         // 치트: Ctrl+Shift+C 단서 위치/비밀번호 보기
@@ -346,6 +354,88 @@ void AMyPlayerController::ToggleControlsGuide()
     }
 }
 
+void AMyPlayerController::ShowScoreboard()
+{
+    if (!IsLocalController() || SettingsWidget)
+    {
+        return;
+    }
+
+    // 게임 맵(게임 진행 중이거나 끝난 뒤)에서만
+    const AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr;
+    if (!GS || GS->GetGamePhase() == EGamePhase::None)
+    {
+        return;
+    }
+
+    if (!ScoreboardWidget)
+    {
+        ScoreboardWidget = CreateWidget<UScoreboardWidget>(this, UScoreboardWidget::StaticClass());
+        if (!ScoreboardWidget)
+        {
+            return;
+        }
+    }
+
+    if (!ScoreboardWidget->IsInViewport())
+    {
+        // 결과 화면(1000)보다 위, 설정 창(1000)과 같은 층
+        ScoreboardWidget->AddToViewport(1002);
+    }
+    ScoreboardWidget->RefreshNow();
+}
+
+void AMyPlayerController::ClientReceiveTeamScores_Implementation(const TArray<FTeamScoreEntry>& Entries)
+{
+    TeamScoreCache.Reset();
+    for (const FTeamScoreEntry& Entry : Entries)
+    {
+        if (Entry.Player)
+        {
+            TeamScoreCache.Add(Entry.Player.Get(), Entry.Stats);
+        }
+    }
+}
+
+bool AMyPlayerController::GetVisibleScoreStats(const AMyPlayerState* PS, FHideScoreStats& OutStats) const
+{
+    if (!PS)
+    {
+        return false;
+    }
+
+    // 게임이 끝나면 모두 공개
+    if (PS->AreScoresRevealed())
+    {
+        OutStats = PS->GetRevealedScoreStats();
+        return true;
+    }
+
+    // 내 점수는 나에게만 복제된다
+    if (PS == PlayerState)
+    {
+        OutStats = PS->GetScoreStats();
+        return true;
+    }
+
+    // 팀원 점수는 서버가 보내 준 것
+    if (const FHideScoreStats* Cached = TeamScoreCache.Find(PS))
+    {
+        OutStats = *Cached;
+        return true;
+    }
+
+    return false;
+}
+
+void AMyPlayerController::HideScoreboard()
+{
+    if (ScoreboardWidget && ScoreboardWidget->IsInViewport())
+    {
+        ScoreboardWidget->RemoveFromParent();
+    }
+}
+
 void AMyPlayerController::ToggleSettingsMenu()
 {
     if (SettingsWidget)
@@ -358,6 +448,9 @@ void AMyPlayerController::ToggleSettingsMenu()
     {
         return;
     }
+
+    // 설정 창이 열리면 Tab을 뗀 입력이 안 들어오므로 점수판을 먼저 닫는다
+    HideScoreboard();
 
     SettingsWidget = CreateWidget<USettingsWidget>(this, USettingsWidget::StaticClass());
     if (!SettingsWidget)
@@ -1284,6 +1377,8 @@ void AMyPlayerController::ShowGameRoomUI()
     {
         OldCrosshair->SetVisibility(ESlateVisibility::Collapsed);
     }
+    AttachTimelineBar();
+
     if (!CrosshairWidget)
     {
         CrosshairWidget = CreateWidget<UCrosshairWidget>(this, UCrosshairWidget::StaticClass());
@@ -1296,6 +1391,61 @@ void AMyPlayerController::ShowGameRoomUI()
     RefreshGameRoomCluesFromPlayerState();
     UpdateGameRoomTeamStatus();
     UpdateGameTimeWidgets();
+}
+
+void AMyPlayerController::AttachTimelineBar()
+{
+    if (!GameRoomWidgetInstance)
+    {
+        return;
+    }
+
+    // WBP_GameRoom 위쪽 프레임: Scale_TimeBar(ScaleBox) > Overlay > TimeBar(프레임 이미지) + 팀 이름 + 가운데 시간.
+    // 프레임 이미지 바로 위에 타임라인 바를 넣고, 이미지 안 빈 홈 위치만큼 여백을 줘서 홈에 딱 맞춘다.
+    UImage* Frame = Cast<UImage>(GameRoomWidgetInstance->GetWidgetFromName(TEXT("TimeBar")));
+    UOverlay* FrameOverlay = Frame ? Cast<UOverlay>(Frame->GetParent()) : nullptr;
+    if (!FrameOverlay)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Timeline bar: TimeBar image or its Overlay parent not found in WBP_GameRoom."));
+        return;
+    }
+
+    FVector2D FrameSize = Frame->GetBrush().ImageSize;
+    if (const UTexture2D* Tex = Cast<UTexture2D>(Frame->GetBrush().GetResourceObject()))
+    {
+        if (FrameSize.X <= 1.0 || FrameSize.Y <= 1.0)
+        {
+            FrameSize = FVector2D(Tex->GetSizeX(), Tex->GetSizeY());
+        }
+    }
+    if (FrameSize.X <= 1.0 || FrameSize.Y <= 1.0)
+    {
+        return;
+    }
+
+    FMargin FramePadding;
+    if (const UOverlaySlot* FrameSlot = Cast<UOverlaySlot>(Frame->Slot))
+    {
+        FramePadding = FrameSlot->GetPadding();
+    }
+
+    UGameTimelineBar* Bar = CreateWidget<UGameTimelineBar>(this, UGameTimelineBar::StaticClass());
+    if (!Bar)
+    {
+        return;
+    }
+
+    const int32 FrameIndex = FrameOverlay->GetChildIndex(Frame);
+    if (UOverlaySlot* BarSlot = Cast<UOverlaySlot>(FrameOverlay->InsertChildAt(FrameIndex + 1, Bar)))
+    {
+        BarSlot->SetHorizontalAlignment(HAlign_Fill);
+        BarSlot->SetVerticalAlignment(VAlign_Fill);
+        BarSlot->SetPadding(FMargin(
+            FramePadding.Left + FrameSize.X * UGameTimelineBar::GrooveLeft,
+            FramePadding.Top + FrameSize.Y * UGameTimelineBar::GrooveTop,
+            FramePadding.Right + FrameSize.X * (1.f - UGameTimelineBar::GrooveRight),
+            FramePadding.Bottom + FrameSize.Y * (1.f - UGameTimelineBar::GrooveBottom)));
+    }
 }
 
 void AMyPlayerController::CloseGameRoomUI()

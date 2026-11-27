@@ -3,6 +3,8 @@
 #include "MyGameMode.h"
 #include "MyPlayerController.h"
 #include "SeekerProjectile.h"
+#include "MyPlayerState.h"
+#include "Sound/SoundAttenuation.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "PropBase.h"
@@ -984,6 +986,10 @@ void AMyCharacter::FinishDestroyPropSkill()
     {
         PossessingCharacter->HandlePossessedPropDestroyed_Server(Target);
     }
+    else
+    {
+        Target->AwardDecoyHit_Server();
+    }
 
     // 파괴 기록 저장 (탈락자가 생성할 목록은 GameState RespawnList로 가정)
     if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
@@ -1006,7 +1012,7 @@ void AMyCharacter::FinishDestroyPropSkill()
         && !PossessingCharacter->IsSeeker()
         && !PossessingCharacter->IsEliminated())
     {
-        PossessingCharacter->ApplySeekerHit_Server();
+        PossessingCharacter->ApplySeekerHit_Server(this);
     }
 
     OnRep_DestroySkillState();
@@ -1282,7 +1288,7 @@ void AMyCharacter::OnRep_Eliminated()
     }
 }
 
-void AMyCharacter::ApplySeekerHit_Server()
+void AMyCharacter::ApplySeekerHit_Server(AMyCharacter* Attacker)
 {
     if (!HasAuthority()) return;
     if (bEliminated) return;
@@ -1293,6 +1299,16 @@ void AMyCharacter::ApplySeekerHit_Server()
     ForceNetUpdate();
 
     const bool bWillBeEliminated = SeekerHitCount >= MaxSeekerHitsBeforeElimination;
+
+    // 맞힌 술래 점수(탈락시키면 추가 점수)
+    if (AMyPlayerState* AttackerPS = Attacker ? Attacker->GetPlayerState<AMyPlayerState>() : nullptr)
+    {
+        AttackerPS->AddScore_Server(EScoreReason::SeekerHit);
+        if (bWillBeEliminated)
+        {
+            AttackerPS->AddScore_Server(EScoreReason::SeekerEliminate);
+        }
+    }
     PlayRunnerHitSounds_Server(bWillBeEliminated);
 
     // 맞은 본인 화면에 빨간 테두리 효과(탈락 처리로 컨트롤러가 바뀌기 전에 보낸다)
@@ -1303,6 +1319,11 @@ void AMyCharacter::ApplySeekerHit_Server()
 
     if (bWillBeEliminated)
     {
+        if (AMyPlayerState* VictimPS = GetPlayerState<AMyPlayerState>())
+        {
+            VictimPS->MarkEliminated_Server();
+        }
+
         SetEliminated_Server(true);
 
         if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
@@ -1469,3 +1490,36 @@ void AMyCharacter::ApplyEliminatedVisuals()
     SetActorHiddenInGame(true);
 }
 
+
+void AMyCharacter::MulticastPlayStallTaunt_Implementation(USoundBase* Sound)
+{
+    if (GetNetMode() == NM_DedicatedServer || !Sound || !GetWorld())
+    {
+        return;
+    }
+
+    // 멀리서도 들리고 방향을 알 수 있도록 넓게 퍼지는 감쇠 설정을 한 번 만들어 둔다
+    static TWeakObjectPtr<USoundAttenuation> SharedAttenuation;
+    USoundAttenuation* Attenuation = SharedAttenuation.Get();
+    if (!Attenuation)
+    {
+        Attenuation = NewObject<USoundAttenuation>(GetTransientPackage(), TEXT("StallTauntAttenuation"));
+        Attenuation->AddToRoot();
+        Attenuation->Attenuation.bAttenuate = true;
+        Attenuation->Attenuation.bSpatialize = true;
+        Attenuation->Attenuation.AttenuationShape = EAttenuationShape::Sphere;
+        Attenuation->Attenuation.AttenuationShapeExtents = FVector(600.f, 0.f, 0.f);
+        Attenuation->Attenuation.FalloffDistance = 6000.f;
+        SharedAttenuation = Attenuation;
+    }
+
+    FVector Location = GetActorLocation();
+    if (const APropBase* Hidden = GetPossessedProp())
+    {
+        FVector Extent;
+        Hidden->GetActorBounds(true, Location, Extent);
+    }
+
+    // 단계 알림 호루라기와 구분되도록 조금 높게
+    UGameplayStatics::PlaySoundAtLocation(this, Sound, Location, 1.f, 1.35f, 0.f, Attenuation);
+}

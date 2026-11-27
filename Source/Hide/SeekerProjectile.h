@@ -40,6 +40,12 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Attack")
     float LifeSeconds = 3.0f;
 
+    // 맞지 않은 숨는 사람이 떨어진 곳에서 이 거리(cm) 안에 있으면 아슬아슬 회피 점수
+    UPROPERTY(EditDefaultsOnly, Category = "Score", meta = (ClampMin = "0.0"))
+    float NearMissRadius = 200.f;
+
+    void AwardNearMisses(const FVector& ImpactPoint, const class AMyCharacter* HitRunner) const;
+
     /** Effect used when the projectile hits a prop or a non-seeker character. */
     UPROPERTY(EditDefaultsOnly, Category = "Effects")
     UNiagaraSystem* TargetImpactEffect = nullptr;

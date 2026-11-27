@@ -4,6 +4,7 @@
 #include "MyCharacter.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "MyPlayerState.h"
 
 namespace
 {
@@ -288,4 +289,22 @@ void APropBase::StopDrop_Server()
     GetWorldTimerManager().ClearTimer(TH_Drop);
     DropVelocity = 0.f;
     ForceNetUpdate();
+}
+
+void APropBase::SetPlacedByGhost_Server(APlayerState* InPlacer)
+{
+    PlacedByGhost = InPlacer;
+}
+
+void APropBase::AwardDecoyHit_Server()
+{
+    if (!HasAuthority() || IsClaimed() || IsPossessedNet())
+    {
+        return;
+    }
+
+    if (AMyPlayerState* Placer = Cast<AMyPlayerState>(PlacedByGhost.Get()))
+    {
+        Placer->AddScore_Server(EScoreReason::DecoyHit);
+    }
 }

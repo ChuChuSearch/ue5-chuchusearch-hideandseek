@@ -261,6 +261,7 @@ void AMyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     DOREPLIFETIME(AMyGameState, SeekerCodeCooldownEndServerTime);
     DOREPLIFETIME(AMyGameState, CurrentGamePhase);
     DOREPLIFETIME(AMyGameState, PhaseEndServerTime);
+    DOREPLIFETIME(AMyGameState, PhaseTimeline);
     DOREPLIFETIME(AMyGameState, GameResult);
 }
 
@@ -490,6 +491,17 @@ void AMyGameState::SetGamePhase_Server(EGamePhase NewPhase, double DurationSecon
     ForceNetUpdate();
 }
 
+void AMyGameState::SetPhaseTimeline_Server(const TArray<FPhaseTimelineEntry>& InTimeline)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    PhaseTimeline = InTimeline;
+    ForceNetUpdate();
+}
+
 int32 AMyGameState::CountRunnerTeamCollectedClues() const
 {
     TSet<int32> UniqueClues;
@@ -617,6 +629,11 @@ bool AMyGameState::SubmitPasswordCode(APlayerController* RequestPC, const TArray
     if (bSuccess)
     {
         UE_LOG(LogTemp, Log, TEXT("Password victory: role=%d, correct=%d"), static_cast<int32>(RequestRole), OutCorrectCount);
+
+        if (AMyPlayerState* SolverPS = RequestPC->GetPlayerState<AMyPlayerState>())
+        {
+            SolverPS->AddScore_Server(EScoreReason::PasswordSolved);
+        }
 
         if (AMyGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AMyGameMode>() : nullptr)
         {

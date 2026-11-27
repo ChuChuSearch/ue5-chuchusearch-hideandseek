@@ -8,6 +8,9 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/NetConnection.h"
+#include "EngineUtils.h"
+#include "Sound/SoundBase.h"
+#include "UObject/ConstructorHelpers.h"
 
 #include "MyPlayerState.h"
 
@@ -16,6 +19,12 @@ AMyGameMode::AMyGameMode()
     PlayerStateClass = AMyPlayerState::StaticClass();
     DefaultPawnClass = nullptr;
     bUseSeamlessTravel = true;
+
+    static ConstructorHelpers::FObjectFinder<USoundBase> StallSound(TEXT("/Game/Game/Sounds/Phase/SFX_Phase_Whistle.SFX_Phase_Whistle"));
+    if (StallSound.Succeeded())
+    {
+        StallTauntSound = StallSound.Object;
+    }
 }
 
 void AMyGameMode::BeginPlay()
@@ -510,6 +519,20 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
     bGameEnded = true;
 
     GetWorldTimerManager().ClearTimer(TH_GamePhase);
+    GetWorldTimerManager().ClearTimer(TH_CloseHideScore);
+    GetWorldTimerManager().ClearTimer(TH_StallTaunt);
+
+    AwardWinBonus(WinningRole);
+
+    // 게임이 끝났으니 모두의 점수를 공개한다(이후로는 점수가 더 오르지 않는다)
+    GetWorldTimerManager().ClearTimer(TH_TeamScores);
+    for (APlayerState* PS : GameState ? GameState->PlayerArray : TArray<TObjectPtr<APlayerState>>())
+    {
+        if (AMyPlayerState* MyPS = Cast<AMyPlayerState>(PS))
+        {
+            MyPS->RevealScores_Server();
+        }
+    }
 
     if (AMyGameState* GS = GetGameState<AMyGameState>())
     {
@@ -625,8 +648,32 @@ void AMyGameMode::StartGameTimeline()
         return;
     }
 
+    // 전체 타임라인(단계 순서와 시간)을 클라이언트에 알려 시간 바가 이 값으로 그려지게 한다
+    if (AMyGameState* GS = GetGameState<AMyGameState>())
+    {
+        const TPair<EGamePhase, double> Phases[] = {
+            { EGamePhase::HideTime, HideTimeSeconds },
+            { EGamePhase::Phase1, Phase1Seconds },
+            { EGamePhase::ForcedSwap, ForcedSwapSeconds },
+            { EGamePhase::Phase2, Phase2Seconds },
+            { EGamePhase::FeverTime, FeverTimeSeconds },
+        };
+
+        TArray<FPhaseTimelineEntry> Timeline;
+        for (const TPair<EGamePhase, double>& P : Phases)
+        {
+            FPhaseTimelineEntry& Entry = Timeline.AddDefaulted_GetRef();
+            Entry.Phase = P.Key;
+            Entry.DurationSeconds = static_cast<float>(FMath::Max(P.Value, 0.0));
+        }
+        GS->SetPhaseTimeline_Server(Timeline);
+    }
+
     EnterGamePhase(EGamePhase::HideTime, HideTimeSeconds);
     GetWorldTimerManager().SetTimer(TH_GamePhase, this, &AMyGameMode::EnterPhase1, HideTimeSeconds, false);
+
+    // 팀원 점수는 같은 팀에게만 주기적으로 보낸다
+    GetWorldTimerManager().SetTimer(TH_TeamScores, this, &AMyGameMode::PushTeamScores, 0.5f, true, 0.5f);
 }
 
 void AMyGameMode::EnterGamePhase(EGamePhase NewPhase, double DurationSeconds)
@@ -648,6 +695,9 @@ void AMyGameMode::EnterPhase1()
 {
     EnterGamePhase(EGamePhase::Phase1, Phase1Seconds);
     GetWorldTimerManager().SetTimer(TH_GamePhase, this, &AMyGameMode::EnterForcedSwap, Phase1Seconds, false);
+
+    // 술래가 움직이기 시작한 뒤부터 1초마다 "코앞에서 숨기" 점수를 계산한다
+    GetWorldTimerManager().SetTimer(TH_CloseHideScore, this, &AMyGameMode::TickCloseHideScore, 1.f, true);
 }
 
 void AMyGameMode::EnterForcedSwap()
@@ -682,6 +732,13 @@ void AMyGameMode::EnterFeverTime()
     ClearPhase1PropBans();
     EnterGamePhase(EGamePhase::FeverTime, FeverTimeSeconds);
     GetWorldTimerManager().SetTimer(TH_GamePhase, this, &AMyGameMode::EndGameByTime, FeverTimeSeconds, false);
+
+    // 시간 끌기 방지: 피버 타임 동안 숨는 사람 위치에서 주기적으로 소리
+    if (StallTauntSound)
+    {
+        GetWorldTimerManager().SetTimer(TH_StallTaunt, this, &AMyGameMode::PlayStallTaunts,
+            StallTauntIntervalSeconds, true, StallTauntFirstDelaySeconds);
+    }
 }
 
 void AMyGameMode::EndGameByTime()
@@ -874,4 +931,147 @@ void AMyGameMode::ResolveForcedSwapProps()
     }
 
     Phase1PossessedProps.Empty();
+}
+
+// ===== 점수 =====
+
+void AMyGameMode::TickCloseHideScore()
+{
+    if (!HasAuthority() || bGameEnded || !GetWorld())
+    {
+        return;
+    }
+
+    TArray<AMyCharacter*> Seekers;
+    for (TActorIterator<AMyCharacter> It(GetWorld()); It; ++It)
+    {
+        if (IsValid(*It) && It->IsSeeker() && !It->IsEliminated())
+        {
+            Seekers.Add(*It);
+        }
+    }
+
+    if (Seekers.Num() == 0)
+    {
+        return;
+    }
+
+    for (TActorIterator<AMyCharacter> It(GetWorld()); It; ++It)
+    {
+        AMyCharacter* Runner = *It;
+        if (!IsValid(Runner) || Runner->IsSeeker() || Runner->IsEliminated())
+        {
+            continue;
+        }
+
+        // 물체로 숨어 있을 때만(그냥 서 있는 건 숨은 게 아니다)
+        APropBase* Hidden = Runner->GetPossessedProp();
+        if (!IsValid(Hidden))
+        {
+            continue;
+        }
+
+        FVector PropCenter;
+        FVector PropExtent;
+        Hidden->GetActorBounds(true, PropCenter, PropExtent);
+
+        for (AMyCharacter* Seeker : Seekers)
+        {
+            if (FVector::DistSquared(Seeker->GetActorLocation(), PropCenter) > FMath::Square(CloseHideRadius))
+            {
+                continue;
+            }
+
+            // 술래 눈에서 물체까지 가리는 게 없어야 한다(벽 너머는 "코앞"이 아니다)
+            FCollisionQueryParams Params(SCENE_QUERY_STAT(CloseHideTrace), true);
+            Params.AddIgnoredActor(Seeker);
+            Params.AddIgnoredActor(Runner);
+
+            FHitResult Hit;
+            const bool bBlocked = GetWorld()->LineTraceSingleByChannel(
+                Hit, Seeker->GetPawnViewLocation(), PropCenter, ECC_Visibility, Params);
+            if (bBlocked && Hit.GetActor() != Hidden)
+            {
+                continue;
+            }
+
+            if (AMyPlayerState* PS = Runner->GetPlayerState<AMyPlayerState>())
+            {
+                PS->AddScore_Server(EScoreReason::CloseHide);
+            }
+            break;
+        }
+    }
+}
+
+void AMyGameMode::AwardWinBonus(EFinalRole WinningRole)
+{
+    if (!HasAuthority() || WinningRole == EFinalRole::None)
+    {
+        return;
+    }
+
+    if (AGameStateBase* GS = GameState)
+    {
+        for (APlayerState* PS : GS->PlayerArray)
+        {
+            AMyPlayerState* MyPS = Cast<AMyPlayerState>(PS);
+            if (MyPS && MyPS->GetFinalRole() == WinningRole)
+            {
+                MyPS->AddScore_Server(EScoreReason::Win);
+            }
+        }
+    }
+}
+
+// ===== 시간 끌기 방지 =====
+
+void AMyGameMode::PlayStallTaunts()
+{
+    if (!HasAuthority() || bGameEnded || !GetWorld() || !StallTauntSound)
+    {
+        GetWorldTimerManager().ClearTimer(TH_StallTaunt);
+        return;
+    }
+
+    for (TActorIterator<AMyCharacter> It(GetWorld()); It; ++It)
+    {
+        AMyCharacter* Runner = *It;
+        if (IsValid(Runner) && !Runner->IsSeeker() && !Runner->IsEliminated())
+        {
+            Runner->MulticastPlayStallTaunt(StallTauntSound);
+        }
+    }
+}
+
+void AMyGameMode::PushTeamScores()
+{
+    if (!HasAuthority() || bGameEnded || !GameState)
+    {
+        return;
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        AMyPlayerController* MPC = Cast<AMyPlayerController>(It->Get());
+        const AMyPlayerState* ViewerPS = MPC ? MPC->GetPlayerState<AMyPlayerState>() : nullptr;
+        if (!ViewerPS || ViewerPS->GetFinalRole() == EFinalRole::None)
+        {
+            continue;
+        }
+
+        TArray<FTeamScoreEntry> Entries;
+        for (APlayerState* PS : GameState->PlayerArray)
+        {
+            AMyPlayerState* MyPS = Cast<AMyPlayerState>(PS);
+            if (MyPS && MyPS->GetFinalRole() == ViewerPS->GetFinalRole())
+            {
+                FTeamScoreEntry& Entry = Entries.AddDefaulted_GetRef();
+                Entry.Player = MyPS;
+                Entry.Stats = MyPS->GetScoreStats();
+            }
+        }
+
+        MPC->ClientReceiveTeamScores(Entries);
+    }
 }

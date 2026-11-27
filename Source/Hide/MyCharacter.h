@@ -74,6 +74,10 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "DestroySkill")
     float DestroyCooldownSeconds = 5.0f;
 
+    // 시간 끌기 방지: 이 숨는 사람 위치에서 소리를 낸다(멀리서도 방향을 알 수 있게 3D로 크게)
+    UFUNCTION(NetMulticast, Unreliable)
+    void MulticastPlayStallTaunt(USoundBase* Sound);
+
     // PC에서 호출 (좌클릭). 실제로 발사 요청을 보냈으면 true(조준점 반동 표시용).
     bool RequestSeekerAttack();
 
@@ -96,7 +100,8 @@ public:
 
     void SetEliminated_Server(bool bNewEliminated);
 
-    void ApplySeekerHit_Server();
+    // Attacker: 점수를 받을 술래(없으면 점수 없음)
+    void ApplySeekerHit_Server(AMyCharacter* Attacker = nullptr);
 
     // ===== Sound =====
     // 하트가 줄었을 때(맞은 본인만 들림)

@@ -21,6 +21,19 @@ enum class EGamePhase : uint8
     Ended UMETA(DisplayName = "Ended"),
 };
 
+// 게임 전체 타임라인의 한 구간(GameMode의 단계 시간을 그대로 담아 클라이언트에 보낸다)
+USTRUCT(BlueprintType)
+struct FPhaseTimelineEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly)
+    EGamePhase Phase = EGamePhase::None;
+
+    UPROPERTY(BlueprintReadOnly)
+    float DurationSeconds = 0.f;
+};
+
 USTRUCT(BlueprintType)
 struct FRespawnPropInfo
 {
@@ -98,6 +111,10 @@ public:
     bool IsFeverTime() const { return CurrentGamePhase == EGamePhase::FeverTime; }
 
     void SetGamePhase_Server(EGamePhase NewPhase, double DurationSeconds);
+
+    // 게임 전체 단계 순서와 각 시간(GameMode가 게임 시작 때 채운다). 타임라인 바가 읽는다.
+    const TArray<FPhaseTimelineEntry>& GetPhaseTimeline() const { return PhaseTimeline; }
+    void SetPhaseTimeline_Server(const TArray<FPhaseTimelineEntry>& InTimeline);
 
     bool SubmitPasswordCode(APlayerController* RequestPC, const TArray<int32>& InputCode, int32& OutCorrectCount, double& OutCooldownRemaining);
 
@@ -178,6 +195,9 @@ protected:
 
     UPROPERTY(Replicated, BlueprintReadOnly, Category = "Game Phase")
     double PhaseEndServerTime = 0.0;
+
+    UPROPERTY(Replicated, BlueprintReadOnly, Category = "Game Phase")
+    TArray<FPhaseTimelineEntry> PhaseTimeline;
 
     UPROPERTY(ReplicatedUsing = OnRep_GameResult)
     FReplicatedGameResult GameResult;

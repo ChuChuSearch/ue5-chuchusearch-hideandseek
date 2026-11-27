@@ -572,6 +572,9 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
 
         SpawnedProp->SetReplicates(true);
         SpawnedProp->SetReplicateMovement(true);
+
+        // 술래가 이 물체를 쏘면 놓은 유령이 속임수 점수를 받는다
+        SpawnedProp->SetPlacedByGhost_Server(GetPlayerState());
     }
     else
     {

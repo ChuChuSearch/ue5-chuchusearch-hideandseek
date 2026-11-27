@@ -156,6 +156,25 @@ private:
     void OnAudioTabClicked();
 
     UFUNCTION()
+    void OnControlsTabClicked();
+
+    UFUNCTION()
+    void OnSensitivityChanged(float Value);
+
+    UFUNCTION()
+    void OnInvertYChanged(bool bIsChecked);
+
+    void RefreshControls();
+    void SetSensitivityRowValue(float Value);
+
+    // 조작 탭: 상하 반전 체크박스
+    UPROPERTY(Transient)
+    TObjectPtr<UCheckBox> InvertYCheck;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> InvertYStateText;
+
+    UFUNCTION()
     void OnKeepClicked();
 
     UFUNCTION()
@@ -197,7 +216,7 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> TabTexts;
 
-    // 슬라이더 줄: 0 전체, 1 배경음, 2 효과음, 3 렌더링 배율
+    // 슬라이더 줄: 0 전체, 1 배경음, 2 효과음, 3 렌더링 배율, 4 마우스 감도
     UPROPERTY(Transient)
     TArray<TObjectPtr<USlider>> Sliders;
 

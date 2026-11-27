@@ -163,6 +163,7 @@ void USettingsWidget::InitFromController(AMyPlayerController* InPC)
     OwnerPC = InPC;
     RefreshAudio();
     RefreshGraphics();
+    RefreshControls();
 }
 
 TSharedRef<SWidget> USettingsWidget::RebuildWidget()
@@ -283,8 +284,9 @@ void USettingsWidget::BuildTree()
 
     // ----- 탭 -----
     UHorizontalBox* TabBar = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("TabBar"));
-    const FString TabNames[] = { TEXT("그래픽"), TEXT("오디오") };
-    for (int32 i = 0; i < 2; ++i)
+    const FString TabNames[] = { TEXT("그래픽"), TEXT("오디오"), TEXT("조작") };
+    constexpr int32 NumTabs = UE_ARRAY_COUNT(TabNames);
+    for (int32 i = 0; i < NumTabs; ++i)
     {
         UTextBlock* TabText = nullptr;
         UButton* Tab = MakeTabButton(TabNames[i], TabText);
@@ -297,11 +299,12 @@ void USettingsWidget::BuildTree()
         TabSize->SetContent(Tab);
         if (UHorizontalBoxSlot* S = TabBar->AddChildToHorizontalBox(TabSize))
         {
-            S->SetPadding(FMargin(i == 0 ? 0.f : 8.f, 0.f, i == 0 ? 8.f : 0.f, 0.f));
+            S->SetPadding(FMargin(i == 0 ? 0.f : 8.f, 0.f, i == NumTabs - 1 ? 0.f : 8.f, 0.f));
         }
     }
     TabButtons[0]->OnClicked.AddDynamic(this, &USettingsWidget::OnGraphicsTabClicked);
     TabButtons[1]->OnClicked.AddDynamic(this, &USettingsWidget::OnAudioTabClicked);
+    TabButtons[2]->OnClicked.AddDynamic(this, &USettingsWidget::OnControlsTabClicked);
     if (UVerticalBoxSlot* S = Box->AddChildToVerticalBox(TabBar))
     {
         S->SetHorizontalAlignment(HAlign_Center);
@@ -325,6 +328,7 @@ void USettingsWidget::BuildTree()
 
     UVerticalBox* GraphicsPage = MakePage(TEXT("GraphicsPage"));
     UVerticalBox* AudioPage = MakePage(TEXT("AudioPage"));
+    UVerticalBox* ControlsPage = MakePage(TEXT("ControlsPage"));
 
     OptionCombos.SetNum(static_cast<int32>(EOption::Count));
 
@@ -372,6 +376,25 @@ void USettingsWidget::BuildTree()
         VSyncCheck = AddCheckRow(GraphicsPage, FText::FromString(TEXT("수직 동기화")), StateText);
         VSyncStateText = StateText;
         VSyncCheck->OnCheckStateChanged.AddDynamic(this, &USettingsWidget::OnVSyncChanged);
+    }
+
+    // 조작 (슬라이더 4: 마우스 감도, 체크박스: 상하 반전)
+    AddSectionTitle(ControlsPage, FText::FromString(TEXT("마우스")), true);
+    {
+        const FSliderRow Row = AddSliderRow(ControlsPage, FText::FromString(TEXT("마우스 감도")));
+        Sliders.Add(Row.Slider);   // 슬라이더 4
+        Fills.Add(Row.Fill);
+        Percents.Add(Row.Percent);
+        Row.Slider->SetMinValue(AMyPlayerController::MinMouseSensitivity);
+        Row.Slider->SetMaxValue(AMyPlayerController::MaxMouseSensitivity);
+        Row.Slider->SetStepSize(0.05f);
+        Row.Slider->OnValueChanged.AddDynamic(this, &USettingsWidget::OnSensitivityChanged);
+    }
+    {
+        UTextBlock* StateText = nullptr;
+        InvertYCheck = AddCheckRow(ControlsPage, FText::FromString(TEXT("상하 반전")), StateText);
+        InvertYStateText = StateText;
+        InvertYCheck->OnCheckStateChanged.AddDynamic(this, &USettingsWidget::OnInvertYChanged);
     }
 
     // ----- 변경 확인 띠 -----
@@ -427,6 +450,7 @@ void USettingsWidget::BuildTree()
 
     RefreshAudio();
     RefreshGraphics();
+    RefreshControls();
     UpdateConfirmBanner();
     SelectTab(LastTab);
 }
@@ -882,6 +906,53 @@ void USettingsWidget::SelectTab(int32 TabIndex)
 
 void USettingsWidget::OnGraphicsTabClicked() { SelectTab(0); }
 void USettingsWidget::OnAudioTabClicked() { SelectTab(1); }
+void USettingsWidget::OnControlsTabClicked() { SelectTab(2); }
+
+// ===== 조작 =====
+
+void USettingsWidget::SetSensitivityRowValue(float Value)
+{
+    if (!Fills.IsValidIndex(4))
+    {
+        return;
+    }
+
+    const float Range = AMyPlayerController::MaxMouseSensitivity - AMyPlayerController::MinMouseSensitivity;
+    Fills[4]->SetPercent(Range > 0.f ? (Value - AMyPlayerController::MinMouseSensitivity) / Range : 1.f);
+    Percents[4]->SetText(FText::FromString(FString::Printf(TEXT("%.2f"), Value)));
+}
+
+void USettingsWidget::RefreshControls()
+{
+    if (!OwnerPC || !Sliders.IsValidIndex(4))
+    {
+        return;
+    }
+
+    const float Sens = OwnerPC->GetMouseSensitivity();
+    bRefreshing = true;
+    Sliders[4]->SetValue(Sens);
+    bRefreshing = false;
+    SetSensitivityRowValue(Sens);
+    SetCheckRowState(InvertYCheck, InvertYStateText, OwnerPC->IsInvertMouseY());
+}
+
+void USettingsWidget::OnSensitivityChanged(float Value)
+{
+    SetSensitivityRowValue(Value);
+    if (OwnerPC && !bRefreshing) OwnerPC->SetMouseSensitivity(Value);
+}
+
+void USettingsWidget::OnInvertYChanged(bool bIsChecked)
+{
+    if (bRefreshing || !OwnerPC)
+    {
+        return;
+    }
+
+    OwnerPC->SetInvertMouseY(bIsChecked);
+    SetCheckRowState(InvertYCheck, InvertYStateText, bIsChecked);
+}
 
 void USettingsWidget::SetSliderRowValue(int32 Index, float Value)
 {
@@ -1451,10 +1522,12 @@ FReply USettingsWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyE
         return FReply::Handled();
     }
 
-    // Q / E 로 탭 넘기기
+    // Q / E 로 탭 넘기기(양 끝에서 반대쪽으로 돈다)
     if (InKeyEvent.GetKey() == EKeys::Q || InKeyEvent.GetKey() == EKeys::E)
     {
-        SelectTab(ActiveTab == 0 ? 1 : 0);
+        const int32 NumTabs = FMath::Max(1, TabButtons.Num());
+        const int32 Step = InKeyEvent.GetKey() == EKeys::E ? 1 : NumTabs - 1;
+        SelectTab((ActiveTab + Step) % NumTabs);
         return FReply::Handled();
     }
 

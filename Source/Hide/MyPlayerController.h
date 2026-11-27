@@ -62,6 +62,19 @@ public:
     void ToggleSettingsMenu();
     void CloseSettingsMenu();
 
+    // ===== 마우스 설정 (로컬 전용, GameUserSettings.ini에 저장) =====
+    // 시점 회전 입력은 블루프린트에서 AddControllerYaw/PitchInput으로 들어오므로 여기서 배율과 반전을 건다.
+    // 관전 카메라도 같은 값을 쓴다.
+    static constexpr float MinMouseSensitivity = 0.1f;
+    static constexpr float MaxMouseSensitivity = 3.0f;
+    float GetMouseSensitivity() const { return MouseSensitivity; }
+    void SetMouseSensitivity(float Value);
+    bool IsInvertMouseY() const { return bInvertMouseY; }
+    void SetInvertMouseY(bool bInvert);
+
+    virtual void AddYawInput(float Val) override;
+    virtual void AddPitchInput(float Val) override;
+
     // 설정 창의 "게임 나가기": 지금 방(대기실/게임)에서 나가 접속 화면으로 돌아간다.
     // 방장(리슨 서버)이 나가면 방이 닫히고 다른 플레이어는 "방장과의 연결이 끊어졌어요" 안내를 본다.
     void LeaveToConnectScreen();
@@ -437,6 +450,8 @@ private:
     float VolumeMaster = 1.f;
     float VolumeMusic = 1.f;
     float VolumeSFX = 1.f;
+    float MouseSensitivity = 1.f;
+    bool bInvertMouseY = false;
     bool bSettingsPrevShowCursor = false;
 
     void LoadVolumeSettings();

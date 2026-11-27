@@ -227,6 +227,30 @@ void AMyPlayerController::LoadVolumeSettings()
     VolumeMaster = FMath::Clamp(VolumeMaster, 0.f, 1.f);
     VolumeMusic = FMath::Clamp(VolumeMusic, 0.f, 1.f);
     VolumeSFX = FMath::Clamp(VolumeSFX, 0.f, 1.f);
+
+    GConfig->GetFloat(VolumeConfigSection, TEXT("MouseSensitivity"), MouseSensitivity, GGameUserSettingsIni);
+    GConfig->GetBool(VolumeConfigSection, TEXT("InvertMouseY"), bInvertMouseY, GGameUserSettingsIni);
+    MouseSensitivity = FMath::Clamp(MouseSensitivity, MinMouseSensitivity, MaxMouseSensitivity);
+}
+
+void AMyPlayerController::SetMouseSensitivity(float Value)
+{
+    MouseSensitivity = FMath::Clamp(Value, MinMouseSensitivity, MaxMouseSensitivity);
+}
+
+void AMyPlayerController::SetInvertMouseY(bool bInvert)
+{
+    bInvertMouseY = bInvert;
+}
+
+void AMyPlayerController::AddYawInput(float Val)
+{
+    Super::AddYawInput(Val * MouseSensitivity);
+}
+
+void AMyPlayerController::AddPitchInput(float Val)
+{
+    Super::AddPitchInput(Val * MouseSensitivity * (bInvertMouseY ? -1.f : 1.f));
 }
 
 void AMyPlayerController::SaveVolumeSettings() const
@@ -239,6 +263,8 @@ void AMyPlayerController::SaveVolumeSettings() const
     GConfig->SetFloat(VolumeConfigSection, TEXT("Master"), VolumeMaster, GGameUserSettingsIni);
     GConfig->SetFloat(VolumeConfigSection, TEXT("Music"), VolumeMusic, GGameUserSettingsIni);
     GConfig->SetFloat(VolumeConfigSection, TEXT("SFX"), VolumeSFX, GGameUserSettingsIni);
+    GConfig->SetFloat(VolumeConfigSection, TEXT("MouseSensitivity"), MouseSensitivity, GGameUserSettingsIni);
+    GConfig->SetBool(VolumeConfigSection, TEXT("InvertMouseY"), bInvertMouseY, GGameUserSettingsIni);
     GConfig->Flush(false, GGameUserSettingsIni);
 }
 
@@ -2900,8 +2926,9 @@ void AMyPlayerController::UpdateSpectate(float DeltaTime)
         float DX = 0.f;
         float DY = 0.f;
         GetInputMouseDelta(DX, DY);
-        SpectateYaw += DX * 2.0f;
-        SpectatePitch = FMath::Clamp(SpectatePitch + DY * 2.0f, -70.f, 30.f);
+        const float Sens = 2.0f * MouseSensitivity;
+        SpectateYaw += DX * Sens;
+        SpectatePitch = FMath::Clamp(SpectatePitch + DY * Sens * (bInvertMouseY ? -1.f : 1.f), -70.f, 30.f);
     }
 
     // 숨는 중 표시가 바뀔 수 있어 0.5초마다 다시 쓴다

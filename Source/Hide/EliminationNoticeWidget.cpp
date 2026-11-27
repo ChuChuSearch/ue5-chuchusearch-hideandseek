@@ -77,6 +77,14 @@ void UEliminationNoticeWidget::BuildTree()
 
 void UEliminationNoticeWidget::AddNotice(const FString& RunnerName, int32 RemainingRunners)
 {
+    AddMessage(RunnerName.IsEmpty() ? TEXT("러너") : RunnerName, TEXT(" 님이 잡혔어요!"),
+        RemainingRunners > 0 ? FString::Printf(TEXT("남은 러너 %d명"), RemainingRunners) : FString(TEXT("러너 전멸!")),
+        Hex(255, 128, 128), Hex(255, 160, 160));
+}
+
+void UEliminationNoticeWidget::AddMessage(const FString& Highlight, const FString& Message, const FString& SubText,
+    const FLinearColor& BorderColor, const FLinearColor& SubColor)
+{
     if (!List)
     {
         return;
@@ -90,8 +98,8 @@ void UEliminationNoticeWidget::AddNotice(const FString& RunnerName, int32 Remain
         EntryAges.RemoveAt(0);
     }
 
-    // 어두운 알약 모양 바탕 + 코랄 테두리
-    FSlateRoundedBoxBrush Brush(Hex(40, 18, 30, 225), Hex(255, 128, 128), 3.f);
+    // 어두운 알약 모양 바탕 + 색 테두리(탈락은 코랄, 연결 안내는 하늘색 등)
+    FSlateRoundedBoxBrush Brush(Hex(40, 18, 30, 225), BorderColor, 3.f);
     Brush.OutlineSettings.CornerRadii = FVector4(24.f, 24.f, 24.f, 24.f);
     Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
 
@@ -105,7 +113,7 @@ void UEliminationNoticeWidget::AddNotice(const FString& RunnerName, int32 Remain
     const FLinearColor Outline = Hex(60, 20, 30);
 
     UTextBlock* NameText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    NameText->SetText(FText::FromString(RunnerName.IsEmpty() ? TEXT("러너") : RunnerName));
+    NameText->SetText(FText::FromString(Highlight));
     NameText->SetFont(MakeFont(24, Outline, 2));
     NameText->SetColorAndOpacity(FSlateColor(Hex(255, 214, 90)));
     if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(NameText))
@@ -114,7 +122,7 @@ void UEliminationNoticeWidget::AddNotice(const FString& RunnerName, int32 Remain
     }
 
     UTextBlock* MsgText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    MsgText->SetText(FText::FromString(TEXT(" 님이 잡혔어요!")));
+    MsgText->SetText(FText::FromString(Message));
     MsgText->SetFont(MakeFont(24, Outline, 2));
     MsgText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
     if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(MsgText))
@@ -122,16 +130,17 @@ void UEliminationNoticeWidget::AddNotice(const FString& RunnerName, int32 Remain
         S->SetVerticalAlignment(VAlign_Center);
     }
 
-    UTextBlock* CountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    CountText->SetText(RemainingRunners > 0
-        ? FText::FromString(FString::Printf(TEXT("남은 러너 %d명"), RemainingRunners))
-        : FText::FromString(TEXT("러너 전멸!")));
-    CountText->SetFont(MakeFont(18, Outline, 1));
-    CountText->SetColorAndOpacity(FSlateColor(Hex(255, 160, 160)));
-    if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(CountText))
+    if (!SubText.IsEmpty())
     {
-        S->SetPadding(FMargin(18.f, 0.f, 0.f, 0.f));
-        S->SetVerticalAlignment(VAlign_Center);
+        UTextBlock* CountText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+        CountText->SetText(FText::FromString(SubText));
+        CountText->SetFont(MakeFont(18, Outline, 1));
+        CountText->SetColorAndOpacity(FSlateColor(SubColor));
+        if (UHorizontalBoxSlot* S = Line->AddChildToHorizontalBox(CountText))
+        {
+            S->SetPadding(FMargin(18.f, 0.f, 0.f, 0.f));
+            S->SetVerticalAlignment(VAlign_Center);
+        }
     }
 
     if (UVerticalBoxSlot* S = List->AddChildToVerticalBox(Pill))

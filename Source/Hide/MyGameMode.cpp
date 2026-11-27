@@ -160,10 +160,18 @@ bool AMyGameMode::TryRestoreReconnectingPlayer(APlayerController* PC)
         return false;
     }
 
+    const FString Key = GetReconnectKey(PC);
     FDisconnectedPlayerRecord Record;
-    if (!DisconnectedPlayers.RemoveAndCopyValue(GetReconnectKey(PC), Record))
+    if (!DisconnectedPlayers.RemoveAndCopyValue(Key, Record))
     {
         return false;
+    }
+
+    // 돌아왔으니 개인 재접속 시간은 멈춘다
+    if (FTimerHandle* Handle = PlayerReconnectTimers.Find(Key))
+    {
+        GetWorldTimerManager().ClearTimer(*Handle);
+        PlayerReconnectTimers.Remove(Key);
     }
 
     AMyPlayerState* PS = PC->GetPlayerState<AMyPlayerState>();
@@ -176,6 +184,18 @@ bool AMyGameMode::TryRestoreReconnectingPlayer(APlayerController* PC)
     const bool bSeeker = Record.Data.FinalRole == EFinalRole::Seeker;
 
     UE_LOG(LogTemp, Log, TEXT("Player reconnected: %s (role=%d)"), *PS->GetNickname(), static_cast<int32>(Record.Data.FinalRole));
+
+    BroadcastConnectionNotice(PS, EConnectionNoticeKind::Reconnected, FString());
+
+    // 비어 있던 팀이 다시 채워졌으면 팀 전원 이탈 대기를 멈춘다
+    if (GetWorldTimerManager().IsTimerActive(TH_ReconnectGrace) && !IsAnyTeamMissing())
+    {
+        GetWorldTimerManager().ClearTimer(TH_ReconnectGrace);
+        if (AMyGameState* GS = GetGameState<AMyGameState>())
+        {
+            GS->SetReconnectWait_Server(EFinalRole::None, 0.0);
+        }
+    }
 
     APawn* SavedPawn = Record.Pawn.Get();
     if (IsValid(SavedPawn) && !SavedPawn->GetController())
@@ -215,7 +235,108 @@ bool AMyGameMode::TryRestoreReconnectingPlayer(APlayerController* PC)
 
 void AMyGameMode::OnReconnectGraceExpired()
 {
+    if (AMyGameState* GS = GetGameState<AMyGameState>())
+    {
+        GS->SetReconnectWait_Server(EFinalRole::None, 0.0);
+    }
     EvaluateTeamsAfterLogout(nullptr, false);
+}
+
+bool AMyGameMode::IsAnyTeamMissing() const
+{
+    if (!GameState)
+    {
+        return false;
+    }
+
+    int32 Seekers = 0;
+    int32 Runners = 0;
+    for (APlayerState* PS : GameState->PlayerArray)
+    {
+        if (const AMyPlayerState* MPS = Cast<AMyPlayerState>(PS))
+        {
+            Seekers += MPS->GetFinalRole() == EFinalRole::Seeker ? 1 : 0;
+            Runners += MPS->GetFinalRole() == EFinalRole::Runner ? 1 : 0;
+        }
+    }
+
+    return (Seekers == 0 && Runners > 0) || (Runners == 0 && Seekers > 0);
+}
+
+void AMyGameMode::BroadcastConnectionNotice(const AMyPlayerState* About, EConnectionNoticeKind Kind, const FString& SubText) const
+{
+    if (!GetWorld() || !About)
+    {
+        return;
+    }
+
+    const FString Name = About->GetNickname().IsEmpty() ? About->GetPlayerName() : About->GetNickname();
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        AMyPlayerController* MPC = Cast<AMyPlayerController>(It->Get());
+        // 본인에게는 보내지 않는다(끊긴 사람은 어차피 못 받고, 돌아온 사람은 자기 복귀 안내가 필요 없다)
+        if (MPC && MPC->PlayerState != About)
+        {
+            MPC->ClientShowConnectionNotice(Name, Kind, SubText);
+        }
+    }
+}
+
+void AMyGameMode::OnPlayerReconnectExpired(FString Key)
+{
+    PlayerReconnectTimers.Remove(Key);
+
+    FDisconnectedPlayerRecord Record;
+    if (!HasAuthority() || bGameEnded || !DisconnectedPlayers.RemoveAndCopyValue(Key, Record))
+    {
+        return;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("Reconnect time expired: %s"), *Record.Data.Nickname);
+
+    // 남아 있던 캐릭터 정리(숨어 있던 물체에서 빼낸 뒤 없앤다)
+    APawn* Pawn = Record.Pawn.Get();
+    bool bWasActive = false;   // 살아 있던 러너 / 술래였는지(유령이었으면 조용히 정리만)
+    if (AMyCharacter* MC = Cast<AMyCharacter>(Pawn))
+    {
+        bWasActive = !MC->IsEliminated();
+        if (MC->IsPossessing())
+        {
+            MC->ForceReleasePossessedProp_Server();
+        }
+    }
+    if (IsValid(Pawn) && !Pawn->GetController())
+    {
+        Pawn->Destroy();
+    }
+
+    if (!bWasActive)
+    {
+        return;
+    }
+
+    // 안내(이름은 기록에 남은 닉네임으로)
+    const bool bRunner = Record.Data.FinalRole == EFinalRole::Runner;
+    const FString SubText = bRunner
+        ? (CountActiveRunners() > 0 ? FString::Printf(TEXT("남은 러너 %d명"), CountActiveRunners()) : FString(TEXT("러너 전멸!")))
+        : FString();
+    if (GetWorld())
+    {
+        const FString Name = Record.Data.Nickname.IsEmpty() ? TEXT("플레이어") : Record.Data.Nickname;
+        for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+        {
+            if (AMyPlayerController* MPC = Cast<AMyPlayerController>(It->Get()))
+            {
+                MPC->ClientShowConnectionNotice(Name, EConnectionNoticeKind::DroppedOut, SubText);
+            }
+        }
+    }
+
+    // 마지막 러너였으면 술래 승리
+    if (bRunner && !HasAnyActiveRunner())
+    {
+        EndGameWithWinnerDelayed(EFinalRole::Seeker, EliminationResultDelaySeconds);
+    }
 }
 
 void AMyGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -274,7 +395,26 @@ void AMyGameMode::Logout(AController* Exiting)
             DisconnectedPlayers.Add(Key, Record);
 
             UE_LOG(LogTemp, Log, TEXT("Player disconnected mid-match, waiting for reconnect: %s"), *ExitingPlayerState->GetNickname());
+
+            // 이 사람만의 재접속 시간. 지나도 안 돌아오면 캐릭터를 정리한다(살아 있는 러너로 계속 세어지지 않게).
+            if (ReconnectGraceSeconds > 0.f)
+            {
+                FTimerHandle& Handle = PlayerReconnectTimers.FindOrAdd(Key);
+                GetWorldTimerManager().SetTimer(Handle,
+                    FTimerDelegate::CreateUObject(this, &AMyGameMode::OnPlayerReconnectExpired, Key),
+                    ReconnectGraceSeconds, false);
+            }
+
+            BroadcastConnectionNotice(ExitingPlayerState, EConnectionNoticeKind::Disconnected,
+                ReconnectGraceSeconds > 0.f
+                    ? FString::Printf(TEXT("%d초 안에 돌아오면 이어서 해요"), FMath::RoundToInt(ReconnectGraceSeconds))
+                    : FString());
         }
+    }
+    else if (!bGameEnded && ExitingPlayerState && ExitingPlayerState->GetFinalRole() != EFinalRole::None
+        && ExitingPC && !ExitingPC->IsLocalController())
+    {
+        BroadcastConnectionNotice(ExitingPlayerState, EConnectionNoticeKind::Left, FString());
     }
 
     Super::Logout(Exiting);
@@ -355,6 +495,12 @@ void AMyGameMode::EvaluateTeamsAfterLogout(const AMyPlayerState* ExitingPlayerSt
                 &AMyGameMode::OnReconnectGraceExpired,
                 ReconnectGraceSeconds,
                 false);
+
+            // 남은 사람들 화면에 "술래가 모두 나갔어요 · 0:45" 카운트다운을 띄운다
+            if (AMyGameState* GS = GetGameState<AMyGameState>())
+            {
+                GS->SetReconnectWait_Server(RemainingSeekers == 0 ? EFinalRole::Seeker : EFinalRole::Runner, ReconnectGraceSeconds);
+            }
         }
         return;
     }
@@ -548,6 +694,16 @@ void AMyGameMode::EndGameWithWinner(EFinalRole WinningRole)
     GetWorldTimerManager().ClearTimer(TH_GamePhase);
     GetWorldTimerManager().ClearTimer(TH_CloseHideScore);
     GetWorldTimerManager().ClearTimer(TH_StallTaunt);
+    GetWorldTimerManager().ClearTimer(TH_ReconnectGrace);
+    for (TPair<FString, FTimerHandle>& Pair : PlayerReconnectTimers)
+    {
+        GetWorldTimerManager().ClearTimer(Pair.Value);
+    }
+    PlayerReconnectTimers.Empty();
+    if (AMyGameState* WaitGS = GetGameState<AMyGameState>())
+    {
+        WaitGS->SetReconnectWait_Server(EFinalRole::None, 0.0);
+    }
 
     AwardWinBonus(WinningRole);
 

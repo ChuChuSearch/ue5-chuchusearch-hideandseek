@@ -17,6 +17,10 @@ class HIDE_API UEliminationNoticeWidget : public UUserWidget
 public:
     void AddNotice(const FString& RunnerName, int32 RemainingRunners);
 
+    // 일반 알림: [강조(노란 이름)][메시지][작은 부가 글] — 연결 끊김/복귀 안내 등
+    void AddMessage(const FString& Highlight, const FString& Message, const FString& SubText,
+        const FLinearColor& BorderColor, const FLinearColor& SubColor);
+
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;

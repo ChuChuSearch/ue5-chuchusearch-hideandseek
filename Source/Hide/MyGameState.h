@@ -116,6 +116,11 @@ public:
     const TArray<FPhaseTimelineEntry>& GetPhaseTimeline() const { return PhaseTimeline; }
     void SetPhaseTimeline_Server(const TArray<FPhaseTimelineEntry>& InTimeline);
 
+    // 한 팀이 모두 끊겨 재접속을 기다리는 중이면 그 팀(None이면 기다리는 중 아님)과 남은 시간
+    EFinalRole GetReconnectWaitRole() const { return ReconnectWaitRole; }
+    double GetReconnectWaitRemainingSeconds() const;
+    void SetReconnectWait_Server(EFinalRole MissingRole, double DurationSeconds);
+
     bool SubmitPasswordCode(APlayerController* RequestPC, const TArray<int32>& InputCode, int32& OutCorrectCount, double& OutCooldownRemaining);
 
     UFUNCTION(BlueprintCallable)
@@ -198,6 +203,12 @@ protected:
 
     UPROPERTY(Replicated, BlueprintReadOnly, Category = "Game Phase")
     TArray<FPhaseTimelineEntry> PhaseTimeline;
+
+    UPROPERTY(Replicated)
+    EFinalRole ReconnectWaitRole = EFinalRole::None;
+
+    UPROPERTY(Replicated)
+    double ReconnectWaitEndServerTime = 0.0;
 
     UPROPERTY(ReplicatedUsing = OnRep_GameResult)
     FReplicatedGameResult GameResult;

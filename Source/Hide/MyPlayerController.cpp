@@ -34,6 +34,7 @@
 #include "ResultScoreWidget.h"
 #include "LobbyPanelWidget.h"
 #include "LobbySettingsWidget.h"
+#include "ReconnectWaitWidget.h"
 #include "RoleChoiceButtonWidget.h"
 #include "ReadyButtonWidget.h"
 #include "Components/CanvasPanel.h"
@@ -280,29 +281,61 @@ void AMyPlayerController::ClientPlayHitFlash_Implementation(bool bEliminated)
     }
 }
 
-void AMyPlayerController::ClientShowEliminationNotice_Implementation(const FString& RunnerName, int32 RemainingRunners)
+UEliminationNoticeWidget* AMyPlayerController::EnsureNoticeWidget()
 {
     if (!IsLocalController())
     {
-        return;
+        return nullptr;
     }
 
     if (!EliminationNoticeWidget)
     {
         EliminationNoticeWidget = CreateWidget<UEliminationNoticeWidget>(this, UEliminationNoticeWidget::StaticClass());
     }
-    if (!EliminationNoticeWidget)
-    {
-        return;
-    }
-
-    if (!EliminationNoticeWidget->IsInViewport())
+    if (EliminationNoticeWidget && !EliminationNoticeWidget->IsInViewport())
     {
         // 피격 효과(900) 아래, 게임 UI 위
         EliminationNoticeWidget->AddToViewport(850);
     }
+    return EliminationNoticeWidget;
+}
 
-    EliminationNoticeWidget->AddNotice(RunnerName, RemainingRunners);
+void AMyPlayerController::ClientShowEliminationNotice_Implementation(const FString& RunnerName, int32 RemainingRunners)
+{
+    if (UEliminationNoticeWidget* Notice = EnsureNoticeWidget())
+    {
+        Notice->AddNotice(RunnerName, RemainingRunners);
+    }
+}
+
+void AMyPlayerController::ClientShowConnectionNotice_Implementation(const FString& PlayerName, EConnectionNoticeKind Kind, const FString& SubText)
+{
+    UEliminationNoticeWidget* Notice = EnsureNoticeWidget();
+    if (!Notice)
+    {
+        return;
+    }
+
+    auto Hex = [](uint8 R, uint8 G, uint8 B) { return FLinearColor::FromSRGBColor(FColor(R, G, B)); };
+    const FString Name = PlayerName.IsEmpty() ? TEXT("플레이어") : PlayerName;
+
+    switch (Kind)
+    {
+    case EConnectionNoticeKind::Disconnected:
+        Notice->AddMessage(Name, TEXT(" 님의 연결이 끊겼어요"), SubText, Hex(120, 190, 255), Hex(170, 210, 255));
+        break;
+    case EConnectionNoticeKind::Reconnected:
+        Notice->AddMessage(Name, TEXT(" 님이 다시 들어왔어요"), SubText, Hex(110, 210, 140), Hex(170, 235, 190));
+        break;
+    case EConnectionNoticeKind::Left:
+        Notice->AddMessage(Name, TEXT(" 님이 게임을 나갔어요"), SubText, Hex(200, 190, 180), Hex(220, 210, 200));
+        break;
+    case EConnectionNoticeKind::DroppedOut:
+        Notice->AddMessage(Name, TEXT(" 님이 돌아오지 않아 탈락했어요"), SubText, Hex(255, 128, 128), Hex(255, 160, 160));
+        break;
+    default:
+        break;
+    }
 }
 
 void AMyPlayerController::UpdateControlsGuide()
@@ -1575,6 +1608,16 @@ void AMyPlayerController::ShowGameRoomUI()
     }
     AttachTimelineBar();
 
+    // 한 팀이 모두 끊겼을 때의 재접속 카운트다운 띠(평소에는 숨어 있다)
+    if (!ReconnectWaitWidget)
+    {
+        ReconnectWaitWidget = CreateWidget<UReconnectWaitWidget>(this, UReconnectWaitWidget::StaticClass());
+        if (ReconnectWaitWidget)
+        {
+            ReconnectWaitWidget->AddToViewport(860);
+        }
+    }
+
     if (!CrosshairWidget)
     {
         CrosshairWidget = CreateWidget<UCrosshairWidget>(this, UCrosshairWidget::StaticClass());
@@ -1660,6 +1703,12 @@ void AMyPlayerController::CloseGameRoomUI()
     {
         CrosshairWidget->RemoveFromParent();
         CrosshairWidget = nullptr;
+    }
+
+    if (ReconnectWaitWidget)
+    {
+        ReconnectWaitWidget->RemoveFromParent();
+        ReconnectWaitWidget = nullptr;
     }
 }
 

@@ -153,6 +153,12 @@ public:
     UFUNCTION(Client, Reliable)
     void ClientShowEliminationNotice(const FString& RunnerName, int32 RemainingRunners);
 
+    // 다른 플레이어의 연결 끊김/복귀/탈락 처리 안내(모든 플레이어 화면 위쪽)
+    UFUNCTION(Client, Reliable)
+    void ClientShowConnectionNotice(const FString& PlayerName, EConnectionNoticeKind Kind, const FString& SubText);
+
+    class UEliminationNoticeWidget* EnsureNoticeWidget();
+
     UFUNCTION(Client, Reliable)
     void ClientShowGameResult(EFinalRole WinningRole);
 
@@ -327,6 +333,10 @@ private:
     // 화면 중앙 조준점(게임 화면 UI와 같이 띄우고 닫는다)
     UPROPERTY(Transient)
     UCrosshairWidget* CrosshairWidget = nullptr;
+
+    // 한 팀이 모두 끊겼을 때 재접속 카운트다운 띠
+    UPROPERTY(Transient)
+    class UReconnectWaitWidget* ReconnectWaitWidget = nullptr;
 
     // ===== 페이즈 소리 / 배경음 (각 클라 로컬에서만 재생) =====
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music")

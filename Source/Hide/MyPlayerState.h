@@ -20,6 +20,16 @@ enum class EFinalRole : uint8
     Runner UMETA(DisplayName = "Runner"),
 };
 
+// 게임 중 다른 플레이어의 연결 상태 안내 종류
+UENUM()
+enum class EConnectionNoticeKind : uint8
+{
+    Disconnected,   // 연결이 끊김(재접속 기다리는 중)
+    Reconnected,    // 다시 들어옴
+    Left,           // 나감(재접속을 기다리지 않음)
+    DroppedOut,     // 재접속 시간이 지나 탈락 처리
+};
+
 // 점수를 얻는 행동. 점수와 상한은 AMyPlayerState::AddScore_Server에서 정한다.
 enum class EScoreReason : uint8
 {

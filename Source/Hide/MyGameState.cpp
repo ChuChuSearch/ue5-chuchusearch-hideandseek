@@ -262,6 +262,8 @@ void AMyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     DOREPLIFETIME(AMyGameState, CurrentGamePhase);
     DOREPLIFETIME(AMyGameState, PhaseEndServerTime);
     DOREPLIFETIME(AMyGameState, PhaseTimeline);
+    DOREPLIFETIME(AMyGameState, ReconnectWaitRole);
+    DOREPLIFETIME(AMyGameState, ReconnectWaitEndServerTime);
     DOREPLIFETIME(AMyGameState, GameResult);
 }
 
@@ -488,6 +490,27 @@ void AMyGameState::SetGamePhase_Server(EGamePhase NewPhase, double DurationSecon
 
     CurrentGamePhase = NewPhase;
     PhaseEndServerTime = DurationSeconds > 0.0 ? GetServerTimeSeconds() + DurationSeconds : 0.0;
+    ForceNetUpdate();
+}
+
+double AMyGameState::GetReconnectWaitRemainingSeconds() const
+{
+    if (ReconnectWaitRole == EFinalRole::None)
+    {
+        return 0.0;
+    }
+    return FMath::Max(0.0, ReconnectWaitEndServerTime - GetServerTimeSeconds());
+}
+
+void AMyGameState::SetReconnectWait_Server(EFinalRole MissingRole, double DurationSeconds)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    ReconnectWaitRole = MissingRole;
+    ReconnectWaitEndServerTime = MissingRole != EFinalRole::None ? GetServerTimeSeconds() + DurationSeconds : 0.0;
     ForceNetUpdate();
 }
 

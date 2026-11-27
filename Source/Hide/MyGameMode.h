@@ -92,6 +92,16 @@ protected:
     TMap<FString, FDisconnectedPlayerRecord> DisconnectedPlayers;
     FTimerHandle TH_ReconnectGrace;
 
+    // 끊긴 사람별 재접속 시간(지나면 캐릭터 정리)
+    TMap<FString, FTimerHandle> PlayerReconnectTimers;
+    void OnPlayerReconnectExpired(FString Key);
+
+    // 한 팀이 접속자 0명인지
+    bool IsAnyTeamMissing() const;
+
+    // 다른 사람들에게 연결 끊김/복귀 안내
+    void BroadcastConnectionNotice(const AMyPlayerState* About, EConnectionNoticeKind Kind, const FString& SubText) const;
+
     static FString MakeReconnectKey(const FUniqueNetIdRepl& UniqueId, const FString& Address);
     FString GetReconnectKey(const APlayerController* PC) const;
     bool IsDisconnectedPlayerPawn(const APawn* Pawn) const;

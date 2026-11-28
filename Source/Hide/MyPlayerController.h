@@ -293,12 +293,12 @@ private:
 
     // ===== 처음 화면(ConnectMap): 닉네임 + 접속 주소 =====
     void ShowTitleUI();
-    void RemoveLegacyConnectWidget();
+    void FocusTitleUI();
 
     UPROPERTY(Transient)
     TObjectPtr<UTitleWidget> TitleWidget = nullptr;
 
-    FTimerHandle TH_TitleCleanup;
+    FTimerHandle TH_TitleFocus;
 
     // ===== 대기실 로비 맵 =====
     // 대기실(로비 맵)에서는 캐릭터로 돌아다닌다. 준비 / 역할 지망 / 게임 설정은 맵의 장치(E)로,

@@ -57,7 +57,6 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/NavigationConfig.h"
 #include "Blueprint/WidgetTree.h"
-#include "Blueprint/WidgetBlueprintLibrary.h"
 #include "TitleWidget.h"
 #include "MusicSubsystem.h"
 #include "LobbyDevices.h"
@@ -1328,23 +1327,13 @@ void AMyPlayerController::ShowTitleUI()
         TitleWidget->AddToViewport(5);
     }
 
-    RemoveLegacyConnectWidget();
-    // ConnectMap 레벨 블루프린트가 예전 접속 화면(WBP_ServerConnect)을 같은 프레임에 띄우므로 조금 뒤에 한 번 더 치운다
-    GetWorldTimerManager().SetTimer(TH_TitleCleanup, this, &AMyPlayerController::RemoveLegacyConnectWidget, 0.2f, false);
+    FocusTitleUI();
+    // 화면이 처음 그려진 뒤 한 번 더(맵을 막 연 프레임에는 키보드 포커스가 안 잡힐 때가 있다)
+    GetWorldTimerManager().SetTimer(TH_TitleFocus, this, &AMyPlayerController::FocusTitleUI, 0.2f, false);
 }
 
-void AMyPlayerController::RemoveLegacyConnectWidget()
+void AMyPlayerController::FocusTitleUI()
 {
-    TArray<UUserWidget*> Found;
-    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), true);
-    for (UUserWidget* Widget : Found)
-    {
-        if (Widget && Widget->GetClass()->GetName().StartsWith(TEXT("WBP_ServerConnect")))
-        {
-            Widget->RemoveFromParent();
-        }
-    }
-
     if (!TitleWidget)
     {
         return;

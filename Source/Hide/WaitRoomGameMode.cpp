@@ -11,6 +11,8 @@
 #include "GameFramework/Pawn.h"
 #include "MyCharacter.h"
 #include "GhostCharacter.h"
+#include "MyGameState.h"
+#include "PropIconSet.h"
 
 AWaitRoomGameMode::AWaitRoomGameMode()
 {
@@ -132,6 +134,76 @@ void AWaitRoomGameMode::DestroyLobbyPawns()
 }
 
 // ===== 로비 연습 =====
+
+void AWaitRoomGameMode::BeginPlay()
+{
+    Super::BeginPlay();
+
+    // 유령 구멍 체험용 물체 후보를 미리 채우고, 놓아서 줄어들면 다시 채운다
+    TopUpLobbyGhostPool();
+    GetWorldTimerManager().SetTimer(TH_LobbyGhostPool, this, &AWaitRoomGameMode::TopUpLobbyGhostPool, 2.f, true);
+}
+
+void AWaitRoomGameMode::TopUpLobbyGhostPool()
+{
+    AMyGameState* GS = GetGameState<AMyGameState>();
+    if (!GS)
+    {
+        return;
+    }
+
+    if (!bLobbyGhostClassesLoaded)
+    {
+        bLobbyGhostClassesLoaded = true;
+        // 사진(아이콘)이 있는 게임 물체만 쓴다. 사진 목록은 PropIconCommandlet이 만든 DA_PropIcons.
+        if (const UPropIconSet* Icons = LoadObject<UPropIconSet>(nullptr, TEXT("/Game/Game/Data/DA_PropIcons.DA_PropIcons")))
+        {
+            for (const auto& Pair : Icons->Icons)
+            {
+                const FString Name = Pair.Key.GetAssetName();
+                if (!Pair.Value || !Name.StartsWith(TEXT("BP_Prop_")) || Name.Contains(TEXT("Template")))
+                {
+                    continue;
+                }
+                if (UClass* Cls = Pair.Key.LoadSynchronous())
+                {
+                    LobbyGhostPropClasses.Add(Cls);
+                }
+            }
+        }
+        UE_LOG(LogTemp, Log, TEXT("Lobby ghost pool: %d prop classes"), LobbyGhostPropClasses.Num());
+    }
+
+    if (LobbyGhostPropClasses.Num() == 0)
+    {
+        return;
+    }
+
+    int32 Guard = 0;
+    while (GS->GetServerRespawnCount() < LobbyGhostPoolSize && Guard++ < LobbyGhostPoolSize)
+    {
+        UClass* Cls = LobbyGhostPropClasses[FMath::RandRange(0, LobbyGhostPropClasses.Num() - 1)];
+        GS->AddRespawnCandidate_Server(Cls, FTransform(FRotator::ZeroRotator, FVector::ZeroVector, FVector(LobbyGhostPropScale)));
+    }
+}
+
+void AWaitRoomGameMode::NotifyLobbyGhostPlacedProp(AActor* Prop)
+{
+    if (!Prop)
+    {
+        return;
+    }
+    LobbyGhostPlacedProps.RemoveAll([](const TWeakObjectPtr<AActor>& P) { return !P.IsValid(); });
+    LobbyGhostPlacedProps.Add(Prop);
+    while (LobbyGhostPlacedProps.Num() > MaxLobbyGhostPlacedProps)
+    {
+        if (AActor* Oldest = LobbyGhostPlacedProps[0].Get())
+        {
+            Oldest->Destroy();
+        }
+        LobbyGhostPlacedProps.RemoveAt(0);
+    }
+}
 
 void AWaitRoomGameMode::SetPlayerDefaults(APawn* PlayerPawn)
 {

@@ -130,6 +130,24 @@ bool AMyGameState::DoesPropHaveClue(const FName& PropId) const
     return CluePropIds.Contains(PropId);
 }
 
+void AMyGameState::AddRespawnCandidate_Server(TSubclassOf<AActor> PropClass, const FTransform& Transform)
+{
+    if (!HasAuthority() || !PropClass) return;
+
+    FRespawnPropInfo Info;
+    Info.PropClass = PropClass;
+    Info.Transform = Transform;
+    RespawnList.Add(Info);
+    UpdateRespawnCandidateCount_Server();
+
+    if (VisibleRespawnList.Num() < MaxVisibleRespawnProps)
+    {
+        AppendVisibleRespawnEntry(RespawnList.Num() - 1);
+    }
+
+    ForceNetUpdate();
+}
+
 void AMyGameState::RegisterDestroyedProp(AActor* DestroyedProp)
 {
     if (!HasAuthority() || !IsValid(DestroyedProp)) return;

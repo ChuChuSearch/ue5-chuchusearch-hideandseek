@@ -26,6 +26,9 @@ public:
     // 로비 맵: Tab을 누르고 있는 동안 참가자 목록
     void SetPlayersVisible(bool bVisible);
 
+    // 로비 유령 체험 중에는 채팅을 위로 올린다(유령 물체 버튼과 겹침 방지)
+    void SetChatRaised(bool bRaised);
+
     // 로비 맵: Enter로 채팅 입력 칸 열기 / 닫기(닫히면 컨트롤러에 알린다)
     void OpenChatInput();
     void CloseChatInput();
@@ -113,4 +116,9 @@ private:
     TObjectPtr<UTextBlock> ChatHint;
 
     bool bChatOpen = false;
+
+    UPROPERTY(Transient)
+    TObjectPtr<class UOverlaySlot> ChatColumnSlot;
+
+    bool bChatRaised = false;
 };

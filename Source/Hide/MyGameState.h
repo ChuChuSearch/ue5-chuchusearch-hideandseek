@@ -72,6 +72,10 @@ public:
     UFUNCTION(BlueprintCallable)
     void RegisterDestroyedProp(AActor* DestroyedProp);
 
+    // 로비 유령 체험: 부서진 물체 없이도 놓을 물체 후보를 직접 넣는다(서버)
+    void AddRespawnCandidate_Server(TSubclassOf<AActor> PropClass, const FTransform& Transform);
+    int32 GetServerRespawnCount() const { return RespawnList.Num(); }
+
     UFUNCTION(BlueprintCallable)
     const TArray<FRespawnPropInfo>& GetRespawnList() const { return VisibleRespawnList; }
 

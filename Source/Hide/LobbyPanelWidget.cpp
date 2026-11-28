@@ -206,6 +206,7 @@ void ULobbyPanelWidget::BuildTree()
         S->SetVerticalAlignment(VAlign_Bottom);
         // 왼쪽 아래 "H 조작법" 칩 위
         S->SetPadding(FMargin(24.f, 0.f, 0.f, 84.f));
+        ChatColumnSlot = S;
     }
 
     ChatPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ChatPanel"));
@@ -678,6 +679,17 @@ void ULobbyPanelWidget::OnSendClicked()
 {
     SubmitChat();
     CloseChatInput();
+}
+
+void ULobbyPanelWidget::SetChatRaised(bool bRaised)
+{
+    if (bChatRaised == bRaised || !ChatColumnSlot)
+    {
+        return;
+    }
+    bChatRaised = bRaised;
+    // 유령 화면의 물체 버튼(왼쪽 아래)과 겹치지 않게 그 위로 올린다
+    ChatColumnSlot->SetPadding(FMargin(24.f, 0.f, 0.f, bRaised ? 300.f : 84.f));
 }
 
 void ULobbyPanelWidget::SetPlayersVisible(bool bVisible)

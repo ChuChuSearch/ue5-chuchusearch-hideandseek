@@ -1535,6 +1535,12 @@ void AMyPlayerController::UpdateLobbyPractice()
         return;
     }
 
+    // 유령 체험 중에는 채팅을 유령 물체 버튼 위로
+    if (LobbyPanelWidget)
+    {
+        LobbyPanelWidget->SetChatRaised(GhostUIWidgetInstance != nullptr);
+    }
+
     // 술래 연습 중일 때만 조준점(게임 맵에서는 게임 화면이 따로 관리한다)
     const AMyCharacter* MC = GetMyCharacter();
     const bool bSeeker = MC && MC->IsSeeker();

@@ -4,6 +4,7 @@
 #include "MyGameState.h"
 #include "MyCharacter.h"
 #include "PropBase.h"
+#include "WaitRoomGameMode.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -575,6 +576,12 @@ void AGhostCharacter::ServerRequestPlaceRespawnProp_Implementation(int32 Respawn
 
         // 술래가 이 물체를 쏘면 놓은 유령이 속임수 점수를 받는다
         SpawnedProp->SetPlacedByGhost_Server(GetPlayerState());
+
+        // 로비 유령 체험: 놓은 물체가 너무 쌓이지 않게 대기실이 개수를 관리한다
+        if (AWaitRoomGameMode* LobbyGM = GetWorld()->GetAuthGameMode<AWaitRoomGameMode>())
+        {
+            LobbyGM->NotifyLobbyGhostPlacedProp(SpawnedProp);
+        }
     }
     else
     {

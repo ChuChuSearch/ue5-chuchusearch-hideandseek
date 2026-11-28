@@ -1005,7 +1005,9 @@ void AMyCharacter::FinishDestroyPropSkill()
     }
 
     // 파괴 기록 저장 (탈락자가 생성할 목록은 GameState RespawnList로 가정)
-    if (AMyGameState* GS = GetWorld() ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
+    // (로비 연습에서는 부서진 물체가 제자리에 다시 생기고, 유령 후보는 대기실이 게임 물체로 따로 채운다)
+    const bool bLobbyPractice = GetWorld() && GetWorld()->GetAuthGameMode<AWaitRoomGameMode>();
+    if (AMyGameState* GS = (!bLobbyPractice && GetWorld()) ? GetWorld()->GetGameState<AMyGameState>() : nullptr)
     {
         GS->RegisterDestroyedProp(Target);
         GS->TrySpawnClueFromDestroyedProp(Target);

@@ -70,6 +70,23 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "0.5"))
     float LobbyPropRespawnSeconds = 5.f;
 
+    // 유령 체험에서 놓을 물체 후보를 항상 이만큼 채워 둔다(사진이 있는 게임 물체 중에서 무작위)
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "1"))
+    int32 LobbyGhostPoolSize = 9;
+
+    // 게임 맵에 놓인 물체 크기(게임 물체는 맵에서 이 배율로 놓여 있다)
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "0.01"))
+    float LobbyGhostPropScale = 25.4f;
+
+    // 유령이 로비에 놓은 물체가 이보다 많아지면 오래된 것부터 치운다
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "1"))
+    int32 MaxLobbyGhostPlacedProps = 12;
+
+    // 유령이 로비에 물체를 놓았다(개수 제한용)
+    void NotifyLobbyGhostPlacedProp(AActor* Prop);
+
+    virtual void BeginPlay() override;
+
     // 같은 사람이 이보다 자주 보내면 버린다(초)
     UPROPERTY(EditDefaultsOnly, Category = "Lobby|Chat", meta = (ClampMin = "0.0"))
     float ChatMinIntervalSeconds = 0.5f;
@@ -107,6 +124,16 @@ private:
 
     // 물체를 다시 놓는다. 그 자리에 사람이 있으면 조금 뒤 다시 시도.
     void TryRespawnLobbyProp(TSubclassOf<AActor> PropClass, FTransform Transform);
+
+    // 유령 체험 물체 후보 채우기
+    void TopUpLobbyGhostPool();
+    FTimerHandle TH_LobbyGhostPool;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UClass>> LobbyGhostPropClasses;
+    bool bLobbyGhostClassesLoaded = false;
+
+    TArray<TWeakObjectPtr<AActor>> LobbyGhostPlacedProps;
 
     int32 NextLobbyJoinOrder = 1;
 

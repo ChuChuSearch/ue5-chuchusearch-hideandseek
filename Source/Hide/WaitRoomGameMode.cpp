@@ -143,7 +143,7 @@ void AWaitRoomGameMode::BeginPlay()
     TopUpLobbyGhostPool();
     GetWorldTimerManager().SetTimer(TH_LobbyGhostPool, this, &AWaitRoomGameMode::TopUpLobbyGhostPool, 2.f, true);
 
-    // 로비가 한동안 비어 있으면 게임 설정을 처음 값으로(다음 그룹이 깨끗한 상태로 시작)
+    // 로비가 한동안 비어 있으면 게임 설정을 처음 값으로 되돌리고 유령이 놓은 물체를 치운다(다음 그룹이 깨끗한 상태로 시작)
     GetWorldTimerManager().SetTimer(TH_EmptyLobbyCheck, this, &AWaitRoomGameMode::CheckEmptyLobby, EmptyLobbyCheckInterval, true);
 }
 
@@ -164,6 +164,22 @@ void AWaitRoomGameMode::CheckEmptyLobby()
         return;
     }
     bSettingsResetWhileEmpty = true;
+
+    // 유령 체험으로 놓인 물체도 치운다(맵에 원래 있던 물체는 그대로)
+    int32 Cleared = 0;
+    for (const TWeakObjectPtr<AActor>& Placed : LobbyGhostPlacedProps)
+    {
+        if (AActor* Prop = Placed.Get())
+        {
+            Prop->Destroy();
+            ++Cleared;
+        }
+    }
+    LobbyGhostPlacedProps.Reset();
+    if (Cleared > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Lobby empty: cleared %d ghost-placed props"), Cleared);
+    }
 
     ULobbySettingsSubsystem* Sub = GetSettingsSubsystem();
     if (!Sub)

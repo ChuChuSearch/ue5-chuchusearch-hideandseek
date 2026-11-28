@@ -190,6 +190,7 @@ void UTitleWidget::BuildTree()
     if (UTexture2D* LogoTex = LoadObject<UTexture2D>(nullptr, LogoPath))
     {
         USizeBox* LogoSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("LogoSize"));
+        LogoWidget = LogoSize;
         LogoSize->SetWidthOverride(340.f);
         LogoSize->SetHeightOverride(340.f * LogoTex->GetSizeY() / FMath::Max(1, LogoTex->GetSizeX()));
         UImage* Logo = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Logo"));
@@ -279,7 +280,48 @@ void UTitleWidget::BuildTree()
     StatusText->SetAutoWrapText(true);
     StatusText->SetJustification(ETextJustify::Center);
     AddRow(StatusText, 14.f);
-    SetStatus(TEXT("방장은 \"방 만들기\", 친구는 방장의 IP를 넣고 \"접속하기\""), false);
+    SetStatus(TEXT("닉네임을 넣고 '접속하기'를 누르면 게임 서버로 들어가요"), false);
+
+    // ----- 방 만들기 안내(눌러서 펼치기) -----
+    UButton* HelpButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("HostHelpButton"));
+    {
+        FButtonStyle Style = HelpButton->GetStyle();
+        Style.SetNormal(RoundBox(FLinearColor::Transparent, 10.f));
+        Style.SetHovered(RoundBox(Hex(244, 228, 198, 160), 10.f));
+        Style.SetPressed(RoundBox(Hex(244, 228, 198, 220), 10.f));
+        Style.SetNormalPadding(FMargin(8.f, 3.f));
+        Style.SetPressedPadding(FMargin(8.f, 4.f, 8.f, 2.f));
+        HelpButton->SetStyle(Style);
+    }
+    HostHelpToggleText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("HostHelpToggleText"));
+    HostHelpToggleText->SetFont(MakeFont(true, 13));
+    HostHelpToggleText->SetColorAndOpacity(FSlateColor(HostLine));
+    HostHelpToggleText->SetJustification(ETextJustify::Center);
+    HelpButton->SetContent(HostHelpToggleText);
+    HelpButton->OnClicked.AddDynamic(this, &UTitleWidget::OnHostHelpClicked);
+    if (UVerticalBoxSlot* S = Body->AddChildToVerticalBox(HelpButton))
+    {
+        S->SetHorizontalAlignment(HAlign_Center);
+        S->SetPadding(FMargin(0.f, 4.f, 0.f, 0.f));
+    }
+
+    HostHelpBox = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("HostHelpBox"));
+    HostHelpBox->SetBrush(RoundBox(TrackFill, 12.f, TrackLine, 1.5f));
+    HostHelpBox->SetPadding(FMargin(14.f, 10.f));
+    UTextBlock* HelpText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("HostHelpText"));
+    HelpText->SetFont(MakeFont(false, 13));
+    HelpText->SetColorAndOpacity(FSlateColor(LabelColor));
+    HelpText->SetAutoWrapText(true);
+    HelpText->SetText(FText::FromString(
+        TEXT("'방 만들기'를 누르면 내 컴퓨터가 서버가 돼요. 친구들은 주소 칸에 내 IP를 넣고 '접속하기'를 눌러요.\n")
+        TEXT("\n")
+        TEXT("· 처음 열 때 Windows 방화벽 창이 뜨면 '허용'을 눌러 주세요\n")
+        TEXT("· 같은 와이파이 친구: 내 IP는 PowerShell에서 ipconfig 를 치면 나오는 IPv4 주소예요 (예: 192.168.0.10)\n")
+        TEXT("· 다른 곳 친구: 공유기에서 UDP 7777 포트 포워딩을 하고 내 공인 IP를 알려 주세요 (ZeroTier, Tailscale 같은 가상 LAN을 쓰면 포트 설정 없이 돼요)\n")
+        TEXT("· 내가 게임을 끄면 방이 닫혀요")));
+    HostHelpBox->SetContent(HelpText);
+    AddRow(HostHelpBox, 6.f);
+    SetHostHelpOpen(false);
 
     // 지난번에 쓴 닉네임 / 주소 채우기(같은 실행 중에는 로컬 플레이어에 기억된 닉네임이 우선)
     FString SavedNick;
@@ -435,4 +477,29 @@ void UTitleWidget::OnAddressCommitted(const FText& Text, ETextCommit::Type Commi
     {
         OnJoinClicked();
     }
+}
+
+void UTitleWidget::SetHostHelpOpen(bool bOpen)
+{
+    bHostHelpOpen = bOpen;
+    if (HostHelpBox)
+    {
+        HostHelpBox->SetVisibility(bOpen ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+    }
+    // 안내를 펼치면 카드가 길어지므로 로고를 잠시 숨겨 화면 밖으로 넘치지 않게
+    if (LogoWidget)
+    {
+        LogoWidget->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+    }
+    if (HostHelpToggleText)
+    {
+        HostHelpToggleText->SetText(FText::FromString(bOpen
+            ? TEXT("방 만들기 안내 접기")
+            : TEXT("'방 만들기'는 내 컴퓨터가 서버가 돼요 · 여는 방법 보기")));
+    }
+}
+
+void UTitleWidget::OnHostHelpClicked()
+{
+    SetHostHelpOpen(!bHostHelpOpen);
 }

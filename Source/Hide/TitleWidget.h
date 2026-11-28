@@ -37,6 +37,11 @@ private:
     void SetStatus(const FString& Text, bool bError);
 
     UFUNCTION()
+    void OnHostHelpClicked();
+
+    void SetHostHelpOpen(bool bOpen);
+
+    UFUNCTION()
     void OnHostClicked();
 
     UFUNCTION()
@@ -71,6 +76,17 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USoundBase> ClickSound;
+
+    UPROPERTY(Transient)
+    TObjectPtr<class UBorder> HostHelpBox;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> HostHelpToggleText;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UWidget> LogoWidget;
+
+    bool bHostHelpOpen = false;
 
     bool bLeaving = false;
 };

@@ -33,6 +33,9 @@ public:
     // 시작하지 못하면 OutFailReason에 이유(방장에게 채팅 안내로 보여 줌)
     bool TryStartGame(APlayerController* RequestPC, FString* OutFailReason = nullptr);
 
+    // 지금 시작할 수 있는지만 확인(방장 / 2명 이상 / 최대 인원 / 손님 모두 준비). 출발 발판 카운트다운에서 쓴다.
+    bool CheckStartConditions(APlayerController* RequestPC, FString* OutFailReason = nullptr) const;
+
     // ===== 대기실 채팅 =====
     // 플레이어가 보낸 채팅(서버에서 다듬고 너무 잦으면 버린다)
     void HandleLobbyChat(APlayerController* SenderPC, const FString& RawMessage);

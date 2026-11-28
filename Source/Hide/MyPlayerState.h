@@ -140,6 +140,9 @@ public:
     // 서버 전용: 방장이 게임 설정을 바꾸면 모두의 준비를 푼다
     void ResetReady_Server();
 
+    // 서버에서 직접 준비 상태 바꾸기(로비 출발 발판). 방장은 해당 없음.
+    void SetReady_Server(bool bNewReady);
+
     bool IsInWaitRoom_Server() const;
 
     void ExportReconnectData(FReconnectPlayerData& OutData) const;

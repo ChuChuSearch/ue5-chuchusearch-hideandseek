@@ -61,6 +61,9 @@ private:
     TObjectPtr<UVerticalBox> Rows;
 
     UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> Footer;
+
+    UPROPERTY(Transient)
     TObjectPtr<UObject> BoldFont;
 
     UPROPERTY(Transient)

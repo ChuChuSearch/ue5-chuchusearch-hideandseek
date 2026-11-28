@@ -478,7 +478,7 @@ void AWaitRoomGameMode::StartGame(APlayerController* RequestPC)
     TryStartGame(RequestPC);
 }
 
-bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutFailReason)
+bool AWaitRoomGameMode::CheckStartConditions(APlayerController* RequestPC, FString* OutFailReason) const
 {
     auto Fail = [OutFailReason](const TCHAR* Reason)
     {
@@ -509,8 +509,18 @@ bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutF
         const AMyPlayerState* MPS = Cast<AMyPlayerState>(PS);
         if (MPS && !MPS->IsHost() && !MPS->IsReady())
         {
-            return Fail(TEXT("아직 준비하지 않은 사람이 있어요"));
+            return Fail(TEXT("아직 출발 발판에 안 올라온 사람이 있어요"));
         }
+    }
+
+    return true;
+}
+
+bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutFailReason)
+{
+    if (!CheckStartConditions(RequestPC, OutFailReason))
+    {
+        return false;
     }
 
     AMyPlayerState* SeekerPS = nullptr;

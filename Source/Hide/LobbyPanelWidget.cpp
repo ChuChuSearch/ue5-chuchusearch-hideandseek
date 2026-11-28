@@ -59,7 +59,8 @@ namespace
     const FLinearColor TrackLine = Hex(218, 180, 120);
 
     constexpr float PanelWidth = 440.f;
-    constexpr float ChatHeight = 230.f;
+    constexpr float ChatHeight = 170.f;
+    constexpr float ChatWidth = 400.f;
     constexpr int32 MaxChatLines = 60;
     constexpr float RefreshInterval = 0.25f;
 
@@ -161,91 +162,29 @@ void ULobbyPanelWidget::BuildTree()
     UOverlay* Root = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass(), TEXT("Root"));
     WidgetTree->RootWidget = Root;
 
-    // 오른쪽 위 설정 버튼(F10 / ESC로도 열린다)
-    UButton* SettingsButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("SettingsButton"));
-    {
-        FButtonStyle Style = SettingsButton->GetStyle();
-        Style.SetNormal(RoundBox(PanelInnerFill, 18.f, PanelOuterLine, 3.f));
-        Style.SetHovered(RoundBox(Hex(255, 236, 210), 18.f, PanelOuterLine, 3.f));
-        Style.SetPressed(RoundBox(Hex(255, 226, 196), 18.f, AccentDark, 3.f));
-        Style.SetNormalPadding(FMargin(18.f, 6.f, 18.f, 8.f));
-        Style.SetPressedPadding(FMargin(18.f, 7.f, 18.f, 7.f));
-        if (ClickSound)
-        {
-            FSlateSound Click;
-            Click.SetResourceObject(ClickSound);
-            Style.SetPressedSound(Click);
-        }
-        SettingsButton->SetStyle(Style);
-    }
-    UTextBlock* SettingsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SettingsText"));
-    SettingsText->SetText(FText::FromString(TEXT("설정  F10")));
-    SettingsText->SetFont(MakeFont(true, 16));
-    SettingsText->SetColorAndOpacity(FSlateColor(LabelColor));
-    SettingsButton->SetContent(SettingsText);
-    SettingsButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnSettingsClicked);
+    // 로비 맵에서는 캐릭터로 돌아다니므로 화면을 가리지 않게:
+    // - 참가자 목록은 Tab을 누르고 있는 동안만 화면 가운데에
+    // - 채팅은 왼쪽 아래에 작게. Enter로 입력 칸을 열고, Enter로 보내면 닫힌다(Esc는 취소)
 
-    // 그 왼쪽에 게임 설정 버튼(단계 시간 / 최대 인원. 방장만 바꿀 수 있고 다른 사람은 보기만)
-    UButton* GameSettingsButton = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass(), TEXT("GameSettingsButton"));
+    // ----- 참가자 (Tab) -----
+    USizeBox* PlayersSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("PlayersSize"));
+    PlayersSize->SetWidthOverride(PanelWidth);
+    if (UOverlaySlot* S = Root->AddChildToOverlay(PlayersSize))
     {
-        FButtonStyle Style = GameSettingsButton->GetStyle();
-        Style.SetNormal(RoundBox(AccentColor, 18.f, AccentDark, 3.f));
-        Style.SetHovered(RoundBox(AccentHover, 18.f, AccentDark, 3.f));
-        Style.SetPressed(RoundBox(AccentDark, 18.f, AccentDark, 3.f));
-        Style.SetNormalPadding(FMargin(18.f, 6.f, 18.f, 8.f));
-        Style.SetPressedPadding(FMargin(18.f, 7.f, 18.f, 7.f));
-        if (ClickSound)
-        {
-            FSlateSound Click;
-            Click.SetResourceObject(ClickSound);
-            Style.SetPressedSound(Click);
-        }
-        GameSettingsButton->SetStyle(Style);
-    }
-    UTextBlock* GameSettingsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("GameSettingsText"));
-    GameSettingsText->SetText(FText::FromString(TEXT("게임 설정")));
-    GameSettingsText->SetFont(MakeFont(true, 16, AccentDark, 1));
-    GameSettingsText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-    GameSettingsButton->SetContent(GameSettingsText);
-    GameSettingsButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnGameSettingsClicked);
-
-    UHorizontalBox* TopButtons = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("TopButtons"));
-    if (UHorizontalBoxSlot* S = TopButtons->AddChildToHorizontalBox(GameSettingsButton))
-    {
-        S->SetPadding(FMargin(0.f, 0.f, 10.f, 0.f));
-    }
-    TopButtons->AddChildToHorizontalBox(SettingsButton);
-    if (UOverlaySlot* S = Root->AddChildToOverlay(TopButtons))
-    {
-        S->SetHorizontalAlignment(HAlign_Right);
-        S->SetVerticalAlignment(VAlign_Top);
-        S->SetPadding(FMargin(0.f, 24.f, 36.f, 0.f));
-    }
-
-    // 화면 오른쪽 세로 한 줄(위: 참가자, 아래: 채팅)
-    USizeBox* ColumnSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ColumnSize"));
-    ColumnSize->SetWidthOverride(PanelWidth);
-    if (UOverlaySlot* S = Root->AddChildToOverlay(ColumnSize))
-    {
-        S->SetHorizontalAlignment(HAlign_Right);
+        S->SetHorizontalAlignment(HAlign_Center);
         S->SetVerticalAlignment(VAlign_Center);
-        S->SetPadding(FMargin(0.f, 0.f, 36.f, 0.f));
     }
+    PlayersPanelRoot = PlayersSize;
 
-    UVerticalBox* Column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
-    ColumnSize->SetContent(Column);
-
-    // ----- 참가자 -----
     UVerticalBox* PlayersBody = nullptr;
     UTextBlock* PlayersTitle = nullptr;
     UWidget* PlayersPanel = MakePanel(TEXT("참가자"), PlayersBody, &PlayersTitle);
     PlayerTitle = PlayersTitle;
-    Column->AddChildToVerticalBox(PlayersPanel);
+    PlayersSize->SetContent(PlayersPanel);
 
     PlayerRows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("PlayerRows"));
     PlayersBody->AddChildToVerticalBox(PlayerRows);
 
-    // 준비 버튼은 화면 아래 START 자리에 있다(UReadyButtonWidget). 여기에는 준비 현황 안내만.
     PlayersHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("PlayersHint"));
     PlayersHint->SetFont(MakeFont(false, 12));
     PlayersHint->SetColorAndOpacity(FSlateColor(SubLabelColor));
@@ -256,29 +195,51 @@ void ULobbyPanelWidget::BuildTree()
         S->SetHorizontalAlignment(HAlign_Fill);
         S->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
     }
+    PlayersSize->SetVisibility(ESlateVisibility::Collapsed);
 
-    // ----- 채팅 -----
-    UVerticalBox* ChatBody = nullptr;
-    UWidget* ChatPanel = MakePanel(TEXT("채팅"), ChatBody);
-    if (UVerticalBoxSlot* S = Column->AddChildToVerticalBox(ChatPanel))
+    // ----- 채팅 (왼쪽 아래) -----
+    USizeBox* ChatColumn = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ChatColumn"));
+    ChatColumn->SetWidthOverride(ChatWidth);
+    if (UOverlaySlot* S = Root->AddChildToOverlay(ChatColumn))
     {
-        S->SetPadding(FMargin(0.f, 14.f, 0.f, 0.f));
+        S->SetHorizontalAlignment(HAlign_Left);
+        S->SetVerticalAlignment(VAlign_Bottom);
+        // 왼쪽 아래 "H 조작법" 칩 위
+        S->SetPadding(FMargin(24.f, 0.f, 0.f, 84.f));
     }
+
+    ChatPanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("ChatPanel"));
+    ChatPanel->SetPadding(FMargin(12.f, 10.f, 12.f, 10.f));
+    ChatColumn->SetContent(ChatPanel);
+
+    UVerticalBox* ChatBody = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ChatBody"));
+    ChatPanel->SetContent(ChatBody);
 
     USizeBox* ChatSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("ChatSize"));
     ChatSize->SetHeightOverride(ChatHeight);
     ChatBody->AddChildToVerticalBox(ChatSize);
 
     ChatScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass(), TEXT("ChatScroll"));
-    ChatScroll->SetScrollbarThickness(FVector2D(6.0, 6.0));
+    ChatScroll->SetScrollbarThickness(FVector2D(5.0, 5.0));
     ChatSize->SetContent(ChatScroll);
 
-    // 입력 줄: 글 상자 + 보내기 버튼
+    // 닫혀 있을 때 안내 한 줄
+    ChatHint = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("ChatHint"));
+    ChatHint->SetText(FText::FromString(TEXT("Enter  채팅   ·   Tab  참가자")));
+    ChatHint->SetFont(MakeFont(false, 12));
+    ChatHint->SetColorAndOpacity(FSlateColor(SubLabelColor));
+    if (UVerticalBoxSlot* S = ChatBody->AddChildToVerticalBox(ChatHint))
+    {
+        S->SetPadding(FMargin(2.f, 6.f, 0.f, 0.f));
+    }
+
+    // 입력 줄: 글 상자 + 보내기 버튼(Enter를 누르면 나타난다)
     UHorizontalBox* InputLine = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("InputLine"));
     if (UVerticalBoxSlot* S = ChatBody->AddChildToVerticalBox(InputLine))
     {
-        S->SetPadding(FMargin(0.f, 10.f, 0.f, 0.f));
+        S->SetPadding(FMargin(0.f, 8.f, 0.f, 0.f));
     }
+    ChatInputLine = InputLine;
 
     ChatInput = WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("ChatInput"));
     {
@@ -287,17 +248,17 @@ void ULobbyPanelWidget::BuildTree()
         Style.SetBackgroundImageHovered(RoundBox(TrackFill, 12.f, PanelOuterLine, 2.f));
         Style.SetBackgroundImageFocused(RoundBox(Hex(255, 255, 255), 12.f, PanelOuterLine, 2.f));
         Style.SetBackgroundImageReadOnly(RoundBox(TrackFill, 12.f, TrackLine, 2.f));
-        Style.SetPadding(FMargin(12.f, 8.f));
+        Style.SetPadding(FMargin(12.f, 7.f));
         Style.TextStyle.SetFont(MakeFont(false, 15));
         Style.SetForegroundColor(FSlateColor(LabelColor));
         Style.SetFocusedForegroundColor(FSlateColor(LabelColor));
         Style.SetBackgroundColor(FSlateColor(FLinearColor::White));
         ChatInput->WidgetStyle = Style;
     }
-    ChatInput->SetHintText(FText::FromString(TEXT("메시지를 입력하고 Enter")));
-    // 기본값은 Enter로 확정하면 입력 칸에서 포커스가 빠진다. 채팅은 이어서 칠 수 있게 커서를 남긴다.
+    ChatInput->SetHintText(FText::FromString(TEXT("Enter 보내기 · Esc 닫기")));
     ChatInput->SetClearKeyboardFocusOnCommit(false);
     ChatInput->SetSelectAllTextOnCommit(false);
+    ChatInput->SetRevertTextOnEscape(false);
     ChatInput->OnTextCommitted.AddDynamic(this, &ULobbyPanelWidget::OnChatCommitted);
     ChatInput->OnTextChanged.AddDynamic(this, &ULobbyPanelWidget::OnChatChanged);
     if (UHorizontalBoxSlot* S = InputLine->AddChildToHorizontalBox(ChatInput))
@@ -312,8 +273,8 @@ void ULobbyPanelWidget::BuildTree()
         Style.SetNormal(RoundBox(AccentColor, 12.f, AccentDark, 2.f));
         Style.SetHovered(RoundBox(AccentHover, 12.f, AccentDark, 2.f));
         Style.SetPressed(RoundBox(AccentDark, 12.f, AccentDark, 2.f));
-        Style.SetNormalPadding(FMargin(14.f, 6.f));
-        Style.SetPressedPadding(FMargin(14.f, 7.f, 14.f, 5.f));
+        Style.SetNormalPadding(FMargin(12.f, 5.f));
+        Style.SetPressedPadding(FMargin(12.f, 6.f, 12.f, 4.f));
         if (ClickSound)
         {
             FSlateSound Click;
@@ -324,7 +285,7 @@ void ULobbyPanelWidget::BuildTree()
     }
     UTextBlock* SendText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("SendText"));
     SendText->SetText(FText::FromString(TEXT("보내기")));
-    SendText->SetFont(MakeFont(true, 15, AccentDark, 1));
+    SendText->SetFont(MakeFont(true, 14, AccentDark, 1));
     SendText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
     SendButton->SetContent(SendText);
     SendButton->OnClicked.AddDynamic(this, &ULobbyPanelWidget::OnSendClicked);
@@ -334,7 +295,9 @@ void ULobbyPanelWidget::BuildTree()
         S->SetPadding(FMargin(8.f, 0.f, 0.f, 0.f));
     }
 
-    AddChatLine(FString(), TEXT("대기실 채팅이에요. 같이 할 사람들과 인사해 보세요!"), true);
+    ApplyChatOpenLook(false);
+
+    AddChatLine(FString(), TEXT("대기실 채팅이에요. Enter를 눌러 인사해 보세요!"), true);
 
     RefreshPlayers();
 }
@@ -573,11 +536,11 @@ void ULobbyPanelWidget::UpdateReadyArea(const TArray<const AMyPlayerState*>& Pla
     }
     else if (ReadyCount < Guests)
     {
-        Hint = FString::Printf(TEXT("준비 %d/%d · 모두 준비하면 방장이 시작할 수 있어요"), ReadyCount, Guests);
+        Hint = FString::Printf(TEXT("준비 %d/%d · 출발 발판 위에 서면 준비 완료"), ReadyCount, Guests);
     }
     else
     {
-        Hint = bHost ? TEXT("모두 준비했어요! START를 눌러 시작하세요") : TEXT("모두 준비했어요! 방장이 시작하면 바로 출발해요");
+        Hint = bHost ? TEXT("모두 준비했어요! 발판 위에서 E를 눌러 출발하세요") : TEXT("모두 준비했어요! 방장이 출발하면 바로 시작해요");
     }
     PlayersHint->SetText(FText::FromString(Hint));
 }
@@ -688,18 +651,17 @@ void ULobbyPanelWidget::SubmitChat()
 
 void ULobbyPanelWidget::OnChatCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
-    if (CommitMethod != ETextCommit::OnEnter)
+    if (!bChatOpen)
     {
         return;
     }
 
-    SubmitChat();
-
-    // 이어서 바로 칠 수 있게 입력 칸에 계속 머문다
-    if (ChatInput)
+    // Enter: 보내고 닫는다. Esc / 다른 곳 클릭: 그냥 닫는다(쓰던 글은 남겨 둔다)
+    if (CommitMethod == ETextCommit::OnEnter)
     {
-        ChatInput->SetKeyboardFocus();
+        SubmitChat();
     }
+    CloseChatInput();
 }
 
 void ULobbyPanelWidget::OnChatChanged(const FText& Text)
@@ -715,8 +677,63 @@ void ULobbyPanelWidget::OnChatChanged(const FText& Text)
 void ULobbyPanelWidget::OnSendClicked()
 {
     SubmitChat();
-    if (ChatInput)
+    CloseChatInput();
+}
+
+void ULobbyPanelWidget::SetPlayersVisible(bool bVisible)
+{
+    if (PlayersPanelRoot)
     {
-        ChatInput->SetKeyboardFocus();
+        PlayersPanelRoot->SetVisibility(bVisible ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+    }
+    if (bVisible)
+    {
+        LastPlayersSignature.Empty();
+        RefreshPlayers();
+    }
+}
+
+void ULobbyPanelWidget::ApplyChatOpenLook(bool bOpen)
+{
+    if (ChatPanel)
+    {
+        // 닫혀 있으면 흐릿하게, 열면 또렷하게
+        ChatPanel->SetBrush(bOpen
+            ? RoundBox(PanelInnerFill, 16.f, PanelOuterLine, 3.f)
+            : RoundBox(Hex(255, 252, 242, 120), 16.f, Hex(240, 196, 128, 120), 2.f));
+    }
+    if (ChatInputLine)
+    {
+        ChatInputLine->SetVisibility(bOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+    }
+    if (ChatHint)
+    {
+        ChatHint->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+    }
+}
+
+void ULobbyPanelWidget::OpenChatInput()
+{
+    if (bChatOpen || !ChatInput)
+    {
+        return;
+    }
+    bChatOpen = true;
+    ApplyChatOpenLook(true);
+    ChatInput->SetKeyboardFocus();
+}
+
+void ULobbyPanelWidget::CloseChatInput()
+{
+    if (!bChatOpen)
+    {
+        return;
+    }
+    bChatOpen = false;
+    ApplyChatOpenLook(false);
+
+    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
+    {
+        PC->OnLobbyChatClosed();
     }
 }

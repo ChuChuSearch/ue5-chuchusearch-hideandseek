@@ -32,6 +32,8 @@ class UScoreboardWidget;
 class UResultScoreWidget;
 class ULobbyPanelWidget;
 class UTitleWidget;
+class ULobbyHudWidget;
+class ALobbyDevice;
 class ULobbySettingsWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -117,6 +119,19 @@ public:
 
     // 대기실 준비 / 준비 취소(방장은 해당 없음)
     void RequestToggleReady();
+
+    // ===== 대기실 로비 맵 장치 =====
+    // 지금 E를 누르면 상호작용할 장치(가장 가까운 것)
+    ALobbyDevice* GetLobbyFocusDevice() const { return LobbyFocusDevice.Get(); }
+
+    // 채팅 입력 칸이 닫혔다(보냈거나 Esc)
+    void OnLobbyChatClosed();
+
+    UFUNCTION(Server, Reliable)
+    void ServerLobbyInteract(ALobbyDevice* Device);
+
+    UFUNCTION(Client, Reliable)
+    void ClientCloseWaitRoomUI();
 
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputAction* IA_Attack = nullptr;
@@ -279,18 +294,26 @@ private:
     FTimerHandle TH_TitleCleanup;
 
     // ===== 대기실 로비 맵 =====
-    // 대기실(로비 맵)에서는 캐릭터로 돌아다니고, 대기실 메뉴(준비 / 역할 지망 / 닉네임 / 채팅)는 Tab으로 열고 닫는다.
+    // 대기실(로비 맵)에서는 캐릭터로 돌아다닌다. 준비 / 역할 지망 / 게임 설정은 맵의 장치(E)로,
+    // 참가자 목록은 Tab을 누르고 있는 동안, 채팅은 Enter로 입력한다.
     bool IsInWaitRoomMap() const;
-    void ToggleLobbyMenu();
-    void SetLobbyMenuOpen(bool bOpen);
+    void OpenLobbyChat();
+    void RefreshLobbyInputMode();
     void ApplyLobbyMenuInput();
+    void OnEnterPressed();
+    void OnLobbyInteractPressed();
+    ALobbyDevice* FindLobbyFocusDevice() const;
+
+    // 채팅 입력 중(이동 / 시점 막음)
     bool bLobbyMenuOpen = false;
+
+    TWeakObjectPtr<ALobbyDevice> LobbyFocusDevice;
+
+    UPROPERTY(Transient)
+    TObjectPtr<ULobbyHudWidget> LobbyHudWidget = nullptr;
 
     UFUNCTION(Server, Reliable)
     void ServerRequestStartGame();
-
-    UFUNCTION(Client, Reliable)
-    void ClientCloseWaitRoomUI();
 
     void CloseWaitRoomUI();
     void OnAttackPressed(const FInputActionValue& Value);

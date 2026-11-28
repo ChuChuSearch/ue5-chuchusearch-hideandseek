@@ -23,6 +23,15 @@ public:
     // 채팅 한 줄 추가(bSystem이면 "누구님이 들어왔어요" 같은 회색 안내)
     void AddChatLine(const FString& SenderName, const FString& Message, bool bSystem);
 
+    // 로비 맵: Tab을 누르고 있는 동안 참가자 목록
+    void SetPlayersVisible(bool bVisible);
+
+    // 로비 맵: Enter로 채팅 입력 칸 열기 / 닫기(닫히면 컨트롤러에 알린다)
+    void OpenChatInput();
+    void CloseChatInput();
+    bool IsChatInputOpen() const { return bChatOpen; }
+    UEditableTextBox* GetChatInput() const { return ChatInput; }
+
 protected:
     virtual TSharedRef<SWidget> RebuildWidget() override;
     virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -88,4 +97,20 @@ private:
     float RefreshRemain = 0.f;
 
     bool bScrollToEndPending = false;
+
+    void ApplyChatOpenLook(bool bOpen);
+
+    UPROPERTY(Transient)
+    TObjectPtr<UWidget> PlayersPanelRoot;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UBorder> ChatPanel;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UWidget> ChatInputLine;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> ChatHint;
+
+    bool bChatOpen = false;
 };

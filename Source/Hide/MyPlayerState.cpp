@@ -59,6 +59,11 @@ void AMyPlayerState::ServerSetNickname_Implementation(const FString& InNickname)
 
 void AMyPlayerState::ServerSetReady_Implementation(bool bNewReady)
 {
+    SetReady_Server(bNewReady);
+}
+
+void AMyPlayerState::SetReady_Server(bool bNewReady)
+{
     if (!HasAuthority() || !IsInWaitRoom_Server() || bIsHost)
     {
         return;

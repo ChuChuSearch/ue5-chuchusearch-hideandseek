@@ -105,7 +105,7 @@ void UControlsGuideWidget::BuildTree()
     Rows = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Rows"));
     CardBox->AddChildToVerticalBox(Rows);
 
-    UTextBlock* Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Footer"));
+    Footer = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("Footer"));
     Footer->SetText(FText::FromString(TEXT("H 조작법 열기/닫기 · Tab 점수판 · F10 설정")));
     Footer->SetFont(MakeFont(false, 12));
     Footer->SetColorAndOpacity(FSlateColor(LabelColor.CopyWithNewOpacity(0.6f)));
@@ -182,6 +182,13 @@ void UControlsGuideWidget::RebuildRows()
 
     Rows->ClearChildren();
 
+    if (Footer)
+    {
+        Footer->SetText(FText::FromString(Role == EGuideRole::Lobby
+            ? TEXT("H 조작법 열기/닫기 · F10 설정")
+            : TEXT("H 조작법 열기/닫기 · Tab 점수판 · F10 설정")));
+    }
+
     FString Title;
     FLinearColor RibbonColor = Hex(146, 92, 232);
 
@@ -192,7 +199,9 @@ void UControlsGuideWidget::RebuildRows()
         RibbonColor = Hex(236, 152, 42);
         AddRow(TEXT("WASD"), TEXT("이동"));
         AddRow(TEXT("Space"), TEXT("점프"));
-        AddRow(TEXT("Tab"), TEXT("대기실 메뉴 (준비 · 역할 · 채팅)"));
+        AddRow(TEXT("E"), TEXT("발판 · 역할 문 · 게시판 사용"));
+        AddRow(TEXT("Tab (꾹)"), TEXT("참가자 목록"));
+        AddRow(TEXT("Enter"), TEXT("채팅"));
         AddRow(TEXT("ESC / F10"), TEXT("설정"));
         break;
 

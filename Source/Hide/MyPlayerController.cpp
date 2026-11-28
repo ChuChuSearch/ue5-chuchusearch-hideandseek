@@ -59,6 +59,8 @@
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "TitleWidget.h"
+#include "LobbyDevices.h"
+#include "LobbyHudWidget.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -187,6 +189,8 @@ void AMyPlayerController::SetupInputComponent()
         InputComponent->BindKey(EKeys::H, IE_Pressed, this, &AMyPlayerController::ToggleControlsGuide);
         InputComponent->BindKey(EKeys::Tab, IE_Pressed, this, &AMyPlayerController::ShowScoreboard);
         InputComponent->BindKey(EKeys::Tab, IE_Released, this, &AMyPlayerController::HideScoreboard);
+        InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &AMyPlayerController::OnEnterPressed);
+        InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AMyPlayerController::OnLobbyInteractPressed);
 
         // 유령 관전: V 켜기/끄기, ← → 대상 바꾸기(좌/우클릭은 OnAttackPressed / PlayerTick에서)
         InputComponent->BindKey(EKeys::V, IE_Pressed, this, &AMyPlayerController::ToggleSpectate);
@@ -472,10 +476,13 @@ void AMyPlayerController::ShowScoreboard()
         return;
     }
 
-    // 대기실(로비 맵)에서 Tab은 대기실 메뉴 열기/닫기
+    // 대기실(로비 맵)에서 Tab은 누르고 있는 동안 참가자 목록
     if (IsInWaitRoomMap())
     {
-        ToggleLobbyMenu();
+        if (LobbyPanelWidget)
+        {
+            LobbyPanelWidget->SetPlayersVisible(true);
+        }
         return;
     }
 
@@ -548,6 +555,10 @@ bool AMyPlayerController::GetVisibleScoreStats(const AMyPlayerState* PS, FHideSc
 
 void AMyPlayerController::HideScoreboard()
 {
+    if (LobbyPanelWidget)
+    {
+        LobbyPanelWidget->SetPlayersVisible(false);
+    }
     if (ScoreboardWidget && ScoreboardWidget->IsInViewport())
     {
         ScoreboardWidget->RemoveFromParent();
@@ -559,6 +570,13 @@ void AMyPlayerController::ToggleSettingsMenu()
     if (SettingsWidget)
     {
         CloseSettingsMenu();
+        return;
+    }
+
+    // 로비 게임 설정 창이 열려 있으면 ESC는 그 창부터 닫는다
+    if (LobbySettingsWidget && IsInWaitRoomMap())
+    {
+        ToggleLobbySettingsWindow();
         return;
     }
 
@@ -661,6 +679,12 @@ void AMyPlayerController::CloseSettingsMenu()
         Mode.SetHideCursorDuringCapture(false);
         SetInputMode(Mode);
     }
+
+    // 대기실 로비 맵에서는 채팅 / 게임 설정 창 상태에 맞춰 다시
+    if (IsInWaitRoomMap())
+    {
+        RefreshLobbyInputMode();
+    }
 }
 
 void AMyPlayerController::PlayerTick(float DeltaTime)
@@ -668,10 +692,13 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
     Super::PlayerTick(DeltaTime);
 
     // 대기실 메뉴가 열려 있는 동안 캐릭터 이동 / 시점 막기를 유지한다
-    if (bLobbyMenuOpen)
+    if (bLobbyMenuOpen || LobbySettingsWidget)
     {
         ApplyLobbyMenuInput();
     }
+
+    // 대기실: 지금 E로 상호작용할 장치
+    LobbyFocusDevice = IsInWaitRoomMap() ? FindLobbyFocusDevice() : nullptr;
 
     UpdateHovered();
     UpdateGhostUI();
@@ -1223,115 +1250,28 @@ void AMyPlayerController::BroadcastPasswordCooldownUpdated(double CooldownRemain
 void AMyPlayerController::ShowWaitRoomUI()
 {
     if (!IsLocalController()) return;
-    if (!WBP_WaitRoom) return;
-    if (WaitRoomWidgetInstance) return;
+    if (LobbyHudWidget) return;
 
-    WaitRoomWidgetInstance = CreateWidget<UUserWidget>(this, WBP_WaitRoom);
-    if (!WaitRoomWidgetInstance) return;
+    // 대기실은 로비 맵: 예전 대기실 화면(WBP_WaitRoom)은 쓰지 않는다.
+    // 준비 / 역할 지망 / 게임 설정은 맵의 장치로, 닉네임은 처음 화면에서 정한다.
 
-    WaitRoomWidgetInstance->AddToViewport();
-
-    // 닉네임은 입력하는 대로 서버에 보낸다. 확인 버튼은 숨긴다(배경 연필 그림은 그대로).
-    if (UEditableTextBox* NicknameBox = Cast<UEditableTextBox>(WaitRoomWidgetInstance->GetWidgetFromName(TEXT("NicknameBox"))))
+    // 닉네임 보내기. 처음 화면을 거치지 않고 들어온 경우(에디터에서 바로 실행 등)에는 임시 이름을 붙인다.
+    // (게임을 마치고 돌아온 경우에도 서버의 PlayerState가 새로 만들어지므로 다시 보낸다)
+    UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
+    FString Nickname = NickSub ? NickSub->GetNickname() : FString();
+    if (Nickname.IsEmpty())
     {
-        NicknameBox->OnTextChanged.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextChanged);
-        NicknameBox->OnTextCommitted.AddUniqueDynamic(this, &AMyPlayerController::OnNicknameTextCommitted);
-
-        // "닉네임을 입력하세요" / 입력 글자가 칸에 비해 커서 줄인다(WBP 기본 24).
-        // 칸 높이는 옆 연필 그림 칸(43)이 정하므로 글자만 작아지고 칸 크기는 그대로다.
-        NicknameBox->WidgetStyle.TextStyle.Font.Size = 18;
-        NicknameBox->SynchronizeProperties();
-
-        // 게임을 마치고 돌아온 경우: 전에 쓰던 닉네임을 채우고 서버에 다시 보낸다
-        // (대기실 복귀는 재접속 방식이라 서버의 PlayerState가 새로 만들어진다)
-        const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
-        if (NickSub && !NickSub->GetNickname().IsEmpty())
+        Nickname = FString::Printf(TEXT("플레이어%03d"), FMath::RandRange(1, 999));
+        if (NickSub)
         {
-            NicknameBox->SetText(FText::FromString(NickSub->GetNickname()));
-            PendingNickname = NickSub->GetNickname();
-            LastSentNickname.Empty();
-            GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.5f, false);
+            NickSub->SetNickname(Nickname);
         }
     }
-    if (UWidget* ConfirmButton = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ConfirmNicknameButton")))
-    {
-        ConfirmButton->SetVisibility(ESlateVisibility::Collapsed);
-    }
+    PendingNickname = Nickname;
+    LastSentNickname.Empty();
+    GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.5f, false);
 
-    // 예전 글자 한 줄짜리 참가자 목록은 숨기고, 오른쪽에 참가자 목록 + 채팅 패널을 띄운다
-    if (UWidget* OldList = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_PlayerListText")))
-    {
-        OldList->SetVisibility(ESlateVisibility::Collapsed);
-    }
-    // 역할 선택 버튼 3개(술래 지망 / 러너 지망 / 상관없음)를 같은 모양으로 넣는다.
-    // 원래 WBP의 이미지 버튼 두 개는 숨기고 그 자리에 둔다(WBP 캔버스 좌표 기준).
-    if (UCanvasPanel* Canvas = Cast<UCanvasPanel>(WaitRoomWidgetInstance->GetRootWidget()))
-    {
-        for (const TCHAR* OldName : { TEXT("SeekerChoiceButton"), TEXT("RunnerChoiceButton") })
-        {
-            if (UWidget* Old = WaitRoomWidgetInstance->GetWidgetFromName(OldName))
-            {
-                Old->SetVisibility(ESlateVisibility::Collapsed);
-            }
-        }
-
-        struct FRoleButtonSpec
-        {
-            ERolePreference Preference;
-            const TCHAR* Label;
-            FLinearColor Fill;
-            FLinearColor Line;
-            FVector2D Center;   // 캔버스 가운데 기준 위치
-            FVector2D Size;
-            int32 FontSize;
-        };
-
-        auto Hex = [](uint8 R, uint8 G, uint8 B) { return FLinearColor::FromSRGBColor(FColor(R, G, B)); };
-
-        // 원래 버튼 자리: 술래 (-575, 27, 234x78), 러너 (-304, 29, 244x78).
-        // 상관없음은 두 버튼 사이 가운데 아래(닉네임 칸 위쪽 y≈179 전까지).
-        const FRoleButtonSpec Specs[] = {
-            { ERolePreference::SeekerWish, TEXT("술래 지망"), Hex(232, 84, 90), Hex(176, 40, 52), FVector2D(-575.0 + 117.0, 27.0 + 39.0), FVector2D(226.0, 64.0), 24 },
-            { ERolePreference::RunnerWish, TEXT("러너 지망"), Hex(72, 178, 112), Hex(36, 120, 70), FVector2D(-304.0 + 122.0, 29.0 + 39.0), FVector2D(226.0, 64.0), 24 },
-            { ERolePreference::Any, TEXT("상관없음"), Hex(255, 128, 128), Hex(214, 82, 90), FVector2D((-575.0 + (-304.0 + 244.0)) * 0.5, 143.0), FVector2D(210.0, 54.0), 22 },
-        };
-
-        // 시작/준비 버튼: 원래 START 자리(같은 캔버스 배치)에 두고 START는 숨긴다. 방장에게는 "시작하기", 나머지에게는 "준비하기"
-        if (UWidget* StartBox = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_StartButton")))
-        {
-            if (const UCanvasPanelSlot* StartSlot = Cast<UCanvasPanelSlot>(StartBox->Slot))
-            {
-                UReadyButtonWidget* ReadyButton = CreateWidget<UReadyButtonWidget>(this, UReadyButtonWidget::StaticClass());
-                if (UCanvasPanelSlot* S = ReadyButton ? Canvas->AddChildToCanvas(ReadyButton) : nullptr)
-                {
-                    S->SetLayout(StartSlot->GetLayout());
-                    S->SetAutoSize(StartSlot->GetAutoSize());
-                    S->SetZOrder(StartSlot->GetZOrder());
-                    ReadyButton->SetStartWidget(StartBox);
-                }
-            }
-        }
-
-        for (const FRoleButtonSpec& Spec : Specs)
-        {
-            URoleChoiceButtonWidget* RoleButton = CreateWidget<URoleChoiceButtonWidget>(this, URoleChoiceButtonWidget::StaticClass());
-            if (!RoleButton)
-            {
-                continue;
-            }
-
-            RoleButton->Setup(Spec.Preference, Spec.Label, Spec.Fill, Spec.Line, Spec.FontSize);
-            if (UCanvasPanelSlot* S = Canvas->AddChildToCanvas(RoleButton))
-            {
-                S->SetAnchors(FAnchors(0.5f, 0.5f));
-                S->SetAlignment(FVector2D(0.5, 0.5));
-                S->SetPosition(Spec.Center);
-                S->SetSize(Spec.Size);
-                S->SetZOrder(10);
-            }
-        }
-    }
-
+    // 왼쪽 아래 채팅 + Tab 참가자 목록
     if (!LobbyPanelWidget)
     {
         LobbyPanelWidget = CreateWidget<ULobbyPanelWidget>(this, ULobbyPanelWidget::StaticClass());
@@ -1341,40 +1281,15 @@ void AMyPlayerController::ShowWaitRoomUI()
         LobbyPanelWidget->AddToViewport(10);
     }
 
-    // 닉네임은 처음 화면에서 정한다. 이미 있으면 대기실 메뉴의 닉네임 칸(글 상자 + 그림)은 숨긴다.
-    // (처음 화면을 거치지 않고 대기실로 바로 들어온 경우에만 여기서 입력)
-    const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
-    const bool bNeedsNickname = !NickSub || NickSub->GetNickname().IsEmpty();
-    if (!bNeedsNickname)
+    // 장치 표지판 / 이름표 / E 안내
+    LobbyHudWidget = CreateWidget<ULobbyHudWidget>(this, ULobbyHudWidget::StaticClass());
+    if (LobbyHudWidget)
     {
-        if (UWidget* NicknameRow = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_Nickname")))
-        {
-            NicknameRow->SetVisibility(ESlateVisibility::Collapsed);
-        }
+        LobbyHudWidget->AddToViewport(4);
     }
 
-    // 로비 맵이 보이도록 화면 전체를 덮는 대기실 배경 그림은 숨긴다(메뉴는 맵 위에 뜬다)
-    if (WaitRoomWidgetInstance->WidgetTree)
-    {
-        WaitRoomWidgetInstance->WidgetTree->ForEachWidget([bNeedsNickname](UWidget* Widget)
-        {
-            const UImage* Image = Cast<UImage>(Widget);
-            const UObject* Resource = Image ? Image->GetBrush().GetResourceObject() : nullptr;
-            if (!Resource)
-            {
-                return;
-            }
-            const FString ResName = Resource->GetName();
-            if (ResName.Contains(TEXT("Mainscreen_Background")) || (!bNeedsNickname && ResName.Contains(TEXT("NicknameInput"))))
-            {
-                Widget->SetVisibility(ESlateVisibility::Collapsed);
-            }
-        });
-    }
-
-    // 닉네임이 아직 없으면 메뉴를 열어 두고, 있으면 바로 맵을 돌아다닌다
-    bLobbyMenuOpen = !bNeedsNickname; // SetLobbyMenuOpen이 바뀐 경우에만 처리하므로 반대값에서 시작
-    SetLobbyMenuOpen(bNeedsNickname);
+    bLobbyMenuOpen = false;
+    RefreshLobbyInputMode();
 }
 
 void AMyPlayerController::ShowTitleUI()
@@ -1430,52 +1345,52 @@ bool AMyPlayerController::IsInWaitRoomMap() const
     return UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("WaitRoomMap");
 }
 
-void AMyPlayerController::ToggleLobbyMenu()
+void AMyPlayerController::OpenLobbyChat()
 {
-    if (!IsLocalController() || !WaitRoomWidgetInstance)
+    if (!IsLocalController() || !LobbyPanelWidget || bLobbyMenuOpen || SettingsWidget)
     {
         return;
     }
 
-    SetLobbyMenuOpen(!bLobbyMenuOpen);
+    bLobbyMenuOpen = true;
+    // 채팅을 여는 순간 누르고 있던 이동 키가 남지 않게
+    FlushPressedKeys();
+    LobbyPanelWidget->OpenChatInput();
+    RefreshLobbyInputMode();
 }
 
-void AMyPlayerController::SetLobbyMenuOpen(bool bOpen)
+void AMyPlayerController::OnLobbyChatClosed()
 {
-    if (!IsLocalController() || bLobbyMenuOpen == bOpen)
+    if (!bLobbyMenuOpen)
     {
         return;
     }
-
-    bLobbyMenuOpen = bOpen;
-
-    // 닫혀 있어도 채팅이 쌓이도록 위젯은 지우지 않고 숨기기만 한다
-    const ESlateVisibility MenuVisibility = bOpen ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
-    if (WaitRoomWidgetInstance)
-    {
-        WaitRoomWidgetInstance->SetVisibility(MenuVisibility);
-    }
-    if (LobbyPanelWidget)
-    {
-        LobbyPanelWidget->SetVisibility(MenuVisibility);
-    }
-    if (!bOpen && LobbySettingsWidget)
-    {
-        LobbySettingsWidget->RemoveFromParent();
-        LobbySettingsWidget = nullptr;
-    }
-    if (ControlsGuideWidget)
-    {
-        ControlsGuideWidget->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
-    }
-
-    // 메뉴를 여닫는 순간 누르고 있던 키가 캐릭터에 남지 않게
+    bLobbyMenuOpen = false;
     FlushPressedKeys();
+    RefreshLobbyInputMode();
+}
 
-    if (bOpen)
+void AMyPlayerController::RefreshLobbyInputMode()
+{
+    if (!IsLocalController() || SettingsWidget)
     {
-        // UI 전용 입력이면 Tab / ESC / F10이 플레이어 컨트롤러까지 오지 않으므로 게임+UI 겸용.
-        // 대신 캐릭터 이동과 시점 회전은 막는다(글 상자에 쓰는 글자는 글 상자가 먼저 받는다).
+        // 설정 창이 닫힐 때 다시 맞춘다
+        return;
+    }
+
+    if (bLobbyMenuOpen && LobbyPanelWidget && LobbyPanelWidget->GetChatInput())
+    {
+        // 채팅 입력: 글 상자에 키보드를 주고, Tab / ESC 같은 남는 키는 컨트롤러까지 오게 게임+UI
+        FInputModeGameAndUI Mode;
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        Mode.SetHideCursorDuringCapture(false);
+        Mode.SetWidgetToFocus(LobbyPanelWidget->GetChatInput()->TakeWidget());
+        SetInputMode(Mode);
+        bShowMouseCursor = false;
+    }
+    else if (LobbySettingsWidget)
+    {
+        // 게임 설정 창: 마우스로 만진다
         FInputModeGameAndUI Mode;
         Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
         Mode.SetHideCursorDuringCapture(false);
@@ -1484,7 +1399,7 @@ void AMyPlayerController::SetLobbyMenuOpen(bool bOpen)
     }
     else
     {
-        // 글 상자에 남은 키보드 포커스를 게임 화면으로 돌려준다
+        // 그냥 돌아다니는 중. 글 상자에 남은 키보드 포커스를 게임 화면으로 돌려준다
         FSlateApplication::Get().SetAllUserFocusToGameViewport();
         SetInputMode(FInputModeGameOnly());
         bShowMouseCursor = false;
@@ -1493,11 +1408,89 @@ void AMyPlayerController::SetLobbyMenuOpen(bool bOpen)
     ApplyLobbyMenuInput();
 }
 
+void AMyPlayerController::OnEnterPressed()
+{
+    if (!IsLocalController() || !IsInWaitRoomMap() || SettingsWidget || LobbySettingsWidget)
+    {
+        return;
+    }
+    OpenLobbyChat();
+}
+
+ALobbyDevice* AMyPlayerController::FindLobbyFocusDevice() const
+{
+    const APawn* MyPawn = GetPawn();
+    UWorld* World = GetWorld();
+    if (!MyPawn || !World)
+    {
+        return nullptr;
+    }
+
+    ALobbyDevice* Best = nullptr;
+    float BestDist = TNumericLimits<float>::Max();
+    for (TActorIterator<ALobbyDevice> It(World); It; ++It)
+    {
+        ALobbyDevice* Device = *It;
+        if (!Device->IsPawnInRange(MyPawn))
+        {
+            continue;
+        }
+        FString Text;
+        bool bEnabled = true;
+        if (!Device->GetPrompt(this, Text, bEnabled))
+        {
+            continue;
+        }
+        const float Dist = Device->GetHorizontalDistanceTo(MyPawn);
+        if (Dist < BestDist)
+        {
+            BestDist = Dist;
+            Best = Device;
+        }
+    }
+    return Best;
+}
+
+void AMyPlayerController::OnLobbyInteractPressed()
+{
+    if (!IsLocalController() || !IsInWaitRoomMap() || SettingsWidget || bLobbyMenuOpen)
+    {
+        return;
+    }
+
+    // 게시판 창이 열려 있으면 E로 닫는다
+    if (LobbySettingsWidget)
+    {
+        ToggleLobbySettingsWindow();
+        return;
+    }
+
+    ALobbyDevice* Device = FindLobbyFocusDevice();
+    if (Device && Device->InteractLocal(this))
+    {
+        ServerLobbyInteract(Device);
+    }
+}
+
+void AMyPlayerController::ServerLobbyInteract_Implementation(ALobbyDevice* Device)
+{
+    // 대기실에서, 장치 가까이 있을 때만
+    if (!Device || !GetWorld() || !GetWorld()->GetAuthGameMode<AWaitRoomGameMode>())
+    {
+        return;
+    }
+    if (!Device->IsPawnInRange(GetPawn()))
+    {
+        return;
+    }
+    Device->InteractServer(this);
+}
+
 void AMyPlayerController::ApplyLobbyMenuInput()
 {
     // 이동 / 시점 무시는 횟수로 쌓이므로 상태가 다를 때만 바꾼다
     // (캐릭터를 새로 조종하면 엔진이 무시 상태를 초기화하므로 PlayerTick에서도 맞춘다)
-    const bool bBlock = bLobbyMenuOpen && !SettingsWidget;
+    const bool bBlock = (bLobbyMenuOpen || LobbySettingsWidget) && !SettingsWidget;
     if (bBlock)
     {
         if (!IsMoveInputIgnored())
@@ -1679,6 +1672,10 @@ void AMyPlayerController::ToggleLobbySettingsWindow()
     {
         LobbySettingsWidget->RemoveFromParent();
         LobbySettingsWidget = nullptr;
+        if (IsInWaitRoomMap())
+        {
+            RefreshLobbyInputMode();
+        }
         return;
     }
 
@@ -1687,6 +1684,11 @@ void AMyPlayerController::ToggleLobbySettingsWindow()
     {
         // 대기실 화면(10) 위, 설정 창(1000) 아래
         LobbySettingsWidget->AddToViewport(500);
+    }
+
+    if (IsInWaitRoomMap())
+    {
+        RefreshLobbyInputMode();
     }
 }
 
@@ -1709,6 +1711,13 @@ void AMyPlayerController::ClientReceiveLobbyChat_Implementation(const FString& S
 void AMyPlayerController::CloseWaitRoomUI()
 {
     if (!IsLocalController()) return;
+
+    if (LobbyHudWidget)
+    {
+        LobbyHudWidget->RemoveFromParent();
+        LobbyHudWidget = nullptr;
+    }
+    LobbyFocusDevice.Reset();
 
     if (WaitRoomWidgetInstance)
     {
@@ -1748,7 +1757,7 @@ void AMyPlayerController::CloseWaitRoomUI()
 void AMyPlayerController::OnAttackPressed(const FInputActionValue& Value)
 {
     // 설정 창 / 대기실 메뉴가 열려 있으면 클릭은 UI 조작이다(투사체 발사 금지)
-    if (SettingsWidget || bLobbyMenuOpen)
+    if (SettingsWidget || bLobbyMenuOpen || LobbySettingsWidget)
     {
         return;
     }

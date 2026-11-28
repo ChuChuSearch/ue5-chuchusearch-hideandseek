@@ -124,6 +124,9 @@ public:
     // 지금 E를 누르면 상호작용할 장치(가장 가까운 것)
     ALobbyDevice* GetLobbyFocusDevice() const { return LobbyFocusDevice.Get(); }
 
+    // 지금 숨을 수 있는 물체를 보고 있는지(로비 첫 안내용)
+    bool IsHoveringPossessableProp() const { return GetHoveredProp() != nullptr; }
+
     // 채팅 입력 칸이 닫혔다(보냈거나 Esc)
     void OnLobbyChatClosed();
 

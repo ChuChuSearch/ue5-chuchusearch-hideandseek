@@ -44,6 +44,10 @@ private:
     void UpdatePrompt();
     void UpdateCountdown();
 
+    // 처음 한 번만 보여 주는 안내(본 안내는 GameUserSettings에 기록해 다음 실행에도 다시 안 뜬다)
+    void QueueHintOnce(FName Key, const FString& Text);
+    void UpdateHints(float DeltaTime);
+
     UPROPERTY(Transient)
     TObjectPtr<UCanvasPanel> Canvas;
 
@@ -70,4 +74,15 @@ private:
     TMap<TWeakObjectPtr<const AMyPlayerState>, FWorldLabel> NameTags;
 
     float DeviceScanRemain = 0.f;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UBorder> HintBox;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> HintText;
+
+    TArray<FString> HintQueue;
+    TSet<FName> QueuedHints;
+    float HintRemain = 0.f;
+    float LobbyTime = 0.f;
 };

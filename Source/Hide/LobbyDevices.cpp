@@ -576,3 +576,20 @@ FString ALobbyGhostHole::GetLabelSub(const AMyPlayerController* PC) const
 {
     return TEXT("탈락하면 유령이 돼요 · 미리 날아 보기");
 }
+
+// =====================================================================
+// ALobbyZoneSign
+// =====================================================================
+
+ALobbyZoneSign::ALobbyZoneSign()
+{
+    LabelTitle = TEXT("연습장");
+    LabelSub = TEXT("");
+    LabelColor = Hex(56, 150, 96);
+    LabelHeight = 300.f;
+
+    // 나무 팻말(지나다닐 수 있게 충돌 없음)
+    AddShape(TEXT("Pole"), false, FVector(0.f, 0.f, 90.f), FVector(14.f, 14.f, 180.f), false);
+    AddShape(TEXT("Plate"), false, FVector(0.f, 0.f, 175.f), FVector(10.f, 120.f, 60.f), false);
+    ShapeColors = { Hex(122, 74, 30), Hex(255, 236, 196) };
+}

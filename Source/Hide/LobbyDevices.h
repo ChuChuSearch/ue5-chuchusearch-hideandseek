@@ -182,3 +182,19 @@ public:
     virtual void InteractServer(AMyPlayerController* PC) override;
     virtual FString GetLabelSub(const AMyPlayerController* PC) const override;
 };
+
+// 구역 표지판: 상호작용 없이 머리 위 표지판만(예: "숨기 연습장"). 제목과 설명은 디테일 패널에서 바꾼다.
+UCLASS()
+class HIDE_API ALobbyZoneSign : public ALobbyDevice
+{
+    GENERATED_BODY()
+
+public:
+    ALobbyZoneSign();
+
+    virtual FString GetLabelSub(const AMyPlayerController* PC) const override { return LabelSub; }
+
+protected:
+    UPROPERTY(EditAnywhere, Category = "Lobby")
+    FString LabelSub;
+};

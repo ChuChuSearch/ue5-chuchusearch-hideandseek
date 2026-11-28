@@ -3,6 +3,9 @@
 #include "LobbyDevices.h"
 #include "MyPlayerController.h"
 #include "MyPlayerState.h"
+#include "MyCharacter.h"
+#include "GhostCharacter.h"
+#include "Misc/ConfigCacheIni.h"
 
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -136,6 +139,26 @@ void ULobbyHudWidget::BuildTree()
         S->SetZOrder(30);
     }
     CountdownText->SetVisibility(ESlateVisibility::Collapsed);
+
+    // ----- 처음 안내(화면 위 가운데) -----
+    HintBox = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("HintBox"));
+    HintBox->SetBrush(RoundBox(Hex(146, 92, 232, 235), 18.f, FLinearColor::White, 3.f));
+    HintBox->SetPadding(FMargin(22.f, 10.f, 22.f, 12.f));
+    HintText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass(), TEXT("HintText"));
+    HintText->SetFont(MakeFont(true, 19));
+    HintText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+    HintText->SetJustification(ETextJustify::Center);
+    HintText->SetAutoWrapText(true);
+    HintBox->SetContent(HintText);
+    if (UCanvasPanelSlot* S = Canvas->AddChildToCanvas(HintBox))
+    {
+        S->SetAnchors(FAnchors(0.5f, 0.f));
+        S->SetAlignment(FVector2D(0.5, 0.0));
+        S->SetPosition(FVector2D(0.0, 40.0));
+        S->SetAutoSize(true);
+        S->SetZOrder(25);
+    }
+    HintBox->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 ULobbyHudWidget::FWorldLabel ULobbyHudWidget::MakeWorldLabel(bool bWithSub)
@@ -236,6 +259,7 @@ void ULobbyHudWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
     UpdateNameTags();
     UpdatePrompt();
     UpdateCountdown();
+    UpdateHints(InDeltaTime);
 }
 
 void ULobbyHudWidget::UpdateDeviceLabels()
@@ -393,4 +417,104 @@ void ULobbyHudWidget::UpdateCountdown()
     const int32 Secs = FMath::CeilToInt(Remain);
     CountdownText->SetText(FText::FromString(Secs > 0 ? FString::Printf(TEXT("출발까지 %d"), Secs) : TEXT("출발!")));
     CountdownText->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+// ===== 처음 안내 =====
+
+namespace
+{
+    const TCHAR* HintConfigSection = TEXT("Hide.LobbyHints");
+    constexpr float HintShowSeconds = 6.5f;
+}
+
+void ULobbyHudWidget::QueueHintOnce(FName Key, const FString& Text)
+{
+    if (QueuedHints.Contains(Key))
+    {
+        return;
+    }
+    QueuedHints.Add(Key);
+
+    // 전에 본 안내는 다시 띄우지 않는다
+    bool bSeen = false;
+    if (GConfig)
+    {
+        GConfig->GetBool(HintConfigSection, *Key.ToString(), bSeen, GGameUserSettingsIni);
+    }
+    if (bSeen)
+    {
+        return;
+    }
+    if (GConfig)
+    {
+        GConfig->SetBool(HintConfigSection, *Key.ToString(), true, GGameUserSettingsIni);
+        GConfig->Flush(false, GGameUserSettingsIni);
+    }
+    HintQueue.Add(Text);
+}
+
+void ULobbyHudWidget::UpdateHints(float DeltaTime)
+{
+    LobbyTime += DeltaTime;
+
+    const AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer());
+    const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+
+    // 들어오고 잠깐 뒤: 로비 소개 → 조작
+    if (LobbyTime > 1.5f && Pawn)
+    {
+        QueueHintOnce(TEXT("Welcome"), TEXT("로비에 오신 걸 환영해요! 출발 발판 위에 서면 준비 완료예요"));
+        QueueHintOnce(TEXT("Keys"), TEXT("Tab을 꾹 누르면 참가자 목록, Enter로 채팅할 수 있어요"));
+    }
+
+    if (PC && Pawn)
+    {
+        const ALobbyDevice* Focus = PC->GetLobbyFocusDevice();
+        if (Cast<ALobbyRoleDoor>(Focus))
+        {
+            QueueHintOnce(TEXT("RoleDoor"), TEXT("역할 문에서 E를 누르면 그 역할을 지망하고, 로비에서 그 역할로 연습해요"));
+        }
+        else if (Cast<ALobbyGhostHole>(Focus))
+        {
+            QueueHintOnce(TEXT("GhostHole"), TEXT("게임에서 탈락하면 유령이 돼요. 여기서 E를 눌러 미리 날아 보세요"));
+        }
+        else if (const AMyPlayerState* PS = PC->GetPlayerState<AMyPlayerState>(); PS && PS->IsHost() && Cast<ALobbyStartPad>(Focus))
+        {
+            QueueHintOnce(TEXT("HostPad"), TEXT("방장은 모두 발판에 올라오면 발판 위에서 E를 눌러 출발해요"));
+        }
+
+        if (Cast<AGhostCharacter>(Pawn))
+        {
+            QueueHintOnce(TEXT("Ghost"), TEXT("유령은 아래 물체 그림을 골라 놓을 수 있어요. 구멍에서 E를 누르면 돌아와요"));
+        }
+        else if (const AMyCharacter* MC = Cast<AMyCharacter>(Pawn))
+        {
+            if (MC->IsSeeker())
+            {
+                QueueHintOnce(TEXT("Seeker"), TEXT("술래 연습: 좌클릭으로 마법 발사, 꾹 누르면 물체를 부숴요 (로비에선 맞아도 탈락하지 않아요)"));
+            }
+            else if (PC->IsHoveringPossessableProp())
+            {
+                QueueHintOnce(TEXT("Hide"), TEXT("테두리가 보이는 물체는 F를 눌러 숨을 수 있어요. 다시 F로 나와요"));
+            }
+        }
+    }
+
+    // 하나씩 차례로
+    if (HintRemain > 0.f)
+    {
+        HintRemain -= DeltaTime;
+        if (HintRemain <= 0.f)
+        {
+            HintBox->SetVisibility(ESlateVisibility::Collapsed);
+        }
+        return;
+    }
+    if (HintQueue.Num() > 0)
+    {
+        HintText->SetText(FText::FromString(HintQueue[0]));
+        HintQueue.RemoveAt(0);
+        HintBox->SetVisibility(ESlateVisibility::HitTestInvisible);
+        HintRemain = HintShowSeconds;
+    }
 }

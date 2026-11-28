@@ -31,6 +31,7 @@ class UCrosshairWidget;
 class UScoreboardWidget;
 class UResultScoreWidget;
 class ULobbyPanelWidget;
+class UTitleWidget;
 class ULobbySettingsWidget;
 class UStaticMesh;
 class UStaticMeshComponent;
@@ -267,6 +268,15 @@ private:
     ULobbySettingsWidget* LobbySettingsWidget = nullptr;
 
     void ShowWaitRoomUI();
+
+    // ===== 처음 화면(ConnectMap): 닉네임 + 접속 주소 =====
+    void ShowTitleUI();
+    void RemoveLegacyConnectWidget();
+
+    UPROPERTY(Transient)
+    TObjectPtr<UTitleWidget> TitleWidget = nullptr;
+
+    FTimerHandle TH_TitleCleanup;
 
     // ===== 대기실 로비 맵 =====
     // 대기실(로비 맵)에서는 캐릭터로 돌아다니고, 대기실 메뉴(준비 / 역할 지망 / 닉네임 / 채팅)는 Tab으로 열고 닫는다.

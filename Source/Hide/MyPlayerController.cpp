@@ -57,6 +57,8 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Application/NavigationConfig.h"
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/WidgetBlueprintLibrary.h"
+#include "TitleWidget.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -130,6 +132,7 @@ void AMyPlayerController::BeginPlay()
     else if (LevelName == TEXT("ConnectMap"))
     {
         CloseGameRoomUI();
+        ShowTitleUI();
     }
     else
     {
@@ -1338,25 +1341,88 @@ void AMyPlayerController::ShowWaitRoomUI()
         LobbyPanelWidget->AddToViewport(10);
     }
 
+    // 닉네임은 처음 화면에서 정한다. 이미 있으면 대기실 메뉴의 닉네임 칸(글 상자 + 그림)은 숨긴다.
+    // (처음 화면을 거치지 않고 대기실로 바로 들어온 경우에만 여기서 입력)
+    const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
+    const bool bNeedsNickname = !NickSub || NickSub->GetNickname().IsEmpty();
+    if (!bNeedsNickname)
+    {
+        if (UWidget* NicknameRow = WaitRoomWidgetInstance->GetWidgetFromName(TEXT("ScaleBox_Nickname")))
+        {
+            NicknameRow->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+
     // 로비 맵이 보이도록 화면 전체를 덮는 대기실 배경 그림은 숨긴다(메뉴는 맵 위에 뜬다)
     if (WaitRoomWidgetInstance->WidgetTree)
     {
-        WaitRoomWidgetInstance->WidgetTree->ForEachWidget([](UWidget* Widget)
+        WaitRoomWidgetInstance->WidgetTree->ForEachWidget([bNeedsNickname](UWidget* Widget)
         {
             const UImage* Image = Cast<UImage>(Widget);
             const UObject* Resource = Image ? Image->GetBrush().GetResourceObject() : nullptr;
-            if (Resource && Resource->GetName().Contains(TEXT("Mainscreen_Background")))
+            if (!Resource)
+            {
+                return;
+            }
+            const FString ResName = Resource->GetName();
+            if (ResName.Contains(TEXT("Mainscreen_Background")) || (!bNeedsNickname && ResName.Contains(TEXT("NicknameInput"))))
             {
                 Widget->SetVisibility(ESlateVisibility::Collapsed);
             }
         });
     }
 
-    // 닉네임이 아직 없으면(처음 들어온 경우) 메뉴를 열어 두고, 있으면 바로 맵을 돌아다닌다
-    const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
-    const bool bNeedsNickname = !NickSub || NickSub->GetNickname().IsEmpty();
+    // 닉네임이 아직 없으면 메뉴를 열어 두고, 있으면 바로 맵을 돌아다닌다
     bLobbyMenuOpen = !bNeedsNickname; // SetLobbyMenuOpen이 바뀐 경우에만 처리하므로 반대값에서 시작
     SetLobbyMenuOpen(bNeedsNickname);
+}
+
+void AMyPlayerController::ShowTitleUI()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (!TitleWidget)
+    {
+        TitleWidget = CreateWidget<UTitleWidget>(this, UTitleWidget::StaticClass());
+    }
+    if (TitleWidget && !TitleWidget->IsInViewport())
+    {
+        TitleWidget->AddToViewport(5);
+    }
+
+    RemoveLegacyConnectWidget();
+    // ConnectMap 레벨 블루프린트가 예전 접속 화면(WBP_ServerConnect)을 같은 프레임에 띄우므로 조금 뒤에 한 번 더 치운다
+    GetWorldTimerManager().SetTimer(TH_TitleCleanup, this, &AMyPlayerController::RemoveLegacyConnectWidget, 0.2f, false);
+}
+
+void AMyPlayerController::RemoveLegacyConnectWidget()
+{
+    TArray<UUserWidget*> Found;
+    UWidgetBlueprintLibrary::GetAllWidgetsOfClass(this, Found, UUserWidget::StaticClass(), true);
+    for (UUserWidget* Widget : Found)
+    {
+        if (Widget && Widget->GetClass()->GetName().StartsWith(TEXT("WBP_ServerConnect")))
+        {
+            Widget->RemoveFromParent();
+        }
+    }
+
+    if (!TitleWidget)
+    {
+        return;
+    }
+
+    FInputModeUIOnly Mode;
+    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    if (UWidget* Focus = TitleWidget->GetInitialFocusWidget())
+    {
+        Mode.SetWidgetToFocus(Focus->TakeWidget());
+    }
+    SetInputMode(Mode);
+    SetShowMouseCursor(true);
 }
 
 bool AMyPlayerController::IsInWaitRoomMap() const

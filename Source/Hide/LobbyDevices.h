@@ -166,3 +166,19 @@ public:
     virtual bool InteractLocal(AMyPlayerController* PC) override;
     virtual FString GetLabelSub(const AMyPlayerController* PC) const override;
 };
+
+// 유령 구멍: 사람이 E를 누르면 유령이 되어 날아다니며 물체 놓기를 연습하고,
+// 유령으로 구멍 가까이 와서 다시 E를 누르면 사람으로 돌아온다.
+UCLASS()
+class HIDE_API ALobbyGhostHole : public ALobbyDevice
+{
+    GENERATED_BODY()
+
+public:
+    ALobbyGhostHole();
+
+    virtual bool GetPrompt(const AMyPlayerController* PC, FString& OutText, bool& bOutEnabled) const override;
+    virtual bool InteractLocal(AMyPlayerController* PC) override;
+    virtual void InteractServer(AMyPlayerController* PC) override;
+    virtual FString GetLabelSub(const AMyPlayerController* PC) const override;
+};

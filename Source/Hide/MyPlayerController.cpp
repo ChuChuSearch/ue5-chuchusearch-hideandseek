@@ -414,10 +414,14 @@ void AMyPlayerController::UpdateControlsGuide()
 
     if (IsInWaitRoomMap())
     {
-        // 로비 맵: 캐릭터가 생기면 로비 조작법(Tab 메뉴 안내 포함)
-        if (GetPawn())
+        // 로비 맵: 연습 역할에 맞는 조작법(러너 연습은 로비 조작법에 숨기 포함)
+        if (GetGhostCharacter())
         {
-            GuideRole = EGuideRole::Lobby;
+            GuideRole = EGuideRole::Ghost;
+        }
+        else if (const AMyCharacter* LobbyMC = GetMyCharacter())
+        {
+            GuideRole = LobbyMC->IsSeeker() ? EGuideRole::Seeker : EGuideRole::Lobby;
         }
     }
     else if (bGameMap && !bEnded)
@@ -697,8 +701,16 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
         ApplyLobbyMenuInput();
     }
 
-    // 대기실: 지금 E로 상호작용할 장치
-    LobbyFocusDevice = IsInWaitRoomMap() ? FindLobbyFocusDevice() : nullptr;
+    // 대기실: 지금 E로 상호작용할 장치, 연습 역할 화면
+    if (IsInWaitRoomMap())
+    {
+        LobbyFocusDevice = FindLobbyFocusDevice();
+        UpdateLobbyPractice();
+    }
+    else
+    {
+        LobbyFocusDevice = nullptr;
+    }
 
     UpdateHovered();
     UpdateGhostUI();
@@ -1397,6 +1409,15 @@ void AMyPlayerController::RefreshLobbyInputMode()
         SetInputMode(Mode);
         bShowMouseCursor = true;
     }
+    else if (GhostUIWidgetInstance)
+    {
+        // 유령 체험: 물체 아이콘을 마우스로 고른다(게임에서 유령이 될 때와 같은 입력)
+        FInputModeGameAndUI Mode;
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        Mode.SetHideCursorDuringCapture(false);
+        SetInputMode(Mode);
+        bShowMouseCursor = true;
+    }
     else
     {
         // 그냥 돌아다니는 중. 글 상자에 남은 키보드 포커스를 게임 화면으로 돌려준다
@@ -1484,6 +1505,52 @@ void AMyPlayerController::ServerLobbyInteract_Implementation(ALobbyDevice* Devic
         return;
     }
     Device->InteractServer(this);
+}
+
+void AMyPlayerController::ClientEndLobbyGhost_Implementation()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    if (GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance->RemoveFromParent();
+        GhostUIWidgetInstance = nullptr;
+    }
+    if (APawn* MyPawn = GetPawn())
+    {
+        SetViewTarget(MyPawn);
+    }
+    bEnableClickEvents = false;
+    bEnableMouseOverEvents = false;
+    RefreshLobbyInputMode();
+}
+
+void AMyPlayerController::UpdateLobbyPractice()
+{
+    if (!IsLocalController())
+    {
+        return;
+    }
+
+    // 술래 연습 중일 때만 조준점(게임 맵에서는 게임 화면이 따로 관리한다)
+    const AMyCharacter* MC = GetMyCharacter();
+    const bool bSeeker = MC && MC->IsSeeker();
+    if (bSeeker && !CrosshairWidget)
+    {
+        CrosshairWidget = CreateWidget<UCrosshairWidget>(this, UCrosshairWidget::StaticClass());
+        if (CrosshairWidget)
+        {
+            CrosshairWidget->AddToViewport(5);
+        }
+    }
+    else if (!bSeeker && CrosshairWidget)
+    {
+        CrosshairWidget->RemoveFromParent();
+        CrosshairWidget = nullptr;
+    }
 }
 
 void AMyPlayerController::ApplyLobbyMenuInput()
@@ -1718,6 +1785,18 @@ void AMyPlayerController::CloseWaitRoomUI()
         LobbyHudWidget = nullptr;
     }
     LobbyFocusDevice.Reset();
+
+    // 로비 연습에서 띄운 조준점 / 유령 화면 정리(게임 맵은 게임 화면이 새로 띄운다)
+    if (CrosshairWidget)
+    {
+        CrosshairWidget->RemoveFromParent();
+        CrosshairWidget = nullptr;
+    }
+    if (GhostUIWidgetInstance)
+    {
+        GhostUIWidgetInstance->RemoveFromParent();
+        GhostUIWidgetInstance = nullptr;
+    }
 
     if (WaitRoomWidgetInstance)
     {

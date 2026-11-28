@@ -130,6 +130,10 @@ public:
     UFUNCTION(Server, Reliable)
     void ServerLobbyInteract(ALobbyDevice* Device);
 
+    // 로비 유령 구멍에서 사람으로 돌아왔다(유령 화면 정리)
+    UFUNCTION(Client, Reliable)
+    void ClientEndLobbyGhost();
+
     UFUNCTION(Client, Reliable)
     void ClientCloseWaitRoomUI();
 
@@ -303,6 +307,9 @@ private:
     void OnEnterPressed();
     void OnLobbyInteractPressed();
     ALobbyDevice* FindLobbyFocusDevice() const;
+
+    // 로비 연습: 술래면 조준점을 띄운다
+    void UpdateLobbyPractice();
 
     // 채팅 입력 중(이동 / 시점 막음)
     bool bLobbyMenuOpen = false;

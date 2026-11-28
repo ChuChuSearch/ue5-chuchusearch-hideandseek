@@ -97,6 +97,11 @@ void AMyPlayerState::ServerSetPreference_Implementation(ERolePreference InPrefer
     case ERolePreference::Any:
         Preference = InPreference;
         ForceNetUpdate();
+        // 로비 연습: 술래 지망이면 술래로, 아니면 러너로 연습한다
+        if (AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+        {
+            GM->ApplyPracticeRole(GetPawn());
+        }
         break;
     default:
         // 정의되지 않은 enum 값은 무시

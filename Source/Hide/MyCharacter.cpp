@@ -1,6 +1,7 @@
 ﻿#include "MyCharacter.h"
 #include "MyGameState.h"
 #include "MyGameMode.h"
+#include "WaitRoomGameMode.h"
 #include "MyPlayerController.h"
 #include "SeekerProjectile.h"
 #include "MyPlayerState.h"
@@ -1018,6 +1019,12 @@ void AMyCharacter::FinishDestroyPropSkill()
         SeekerPC->ClientStartCameraShake(USeekerImpactCameraShake::StaticClass());
     }
 
+    // 로비 연습: 부서진 물체는 잠시 뒤 같은 자리에 다시 생긴다
+    if (AWaitRoomGameMode* LobbyGM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+    {
+        LobbyGM->ScheduleLobbyPropRespawn(Target->GetClass(), Target->GetActorTransform());
+    }
+
     Target->Destroy();
 
     if (IsValid(PossessingCharacter)
@@ -1305,6 +1312,17 @@ void AMyCharacter::ApplySeekerHit_Server(AMyCharacter* Attacker)
     if (!HasAuthority()) return;
     if (bEliminated) return;
     if (bIsSeeker) return;
+
+    // 로비 연습: 맞아도 하트가 줄거나 탈락하지 않고, 맞은 효과만 보여 준다
+    if (GetWorld() && GetWorld()->GetAuthGameMode<AWaitRoomGameMode>())
+    {
+        PlayRunnerHitSounds_Server(false);
+        if (AMyPlayerController* VictimPC = Cast<AMyPlayerController>(GetController()))
+        {
+            VictimPC->ClientPlayHitFlash(false);
+        }
+        return;
+    }
 
     ++SeekerHitCount;
     OnRep_SeekerHitCount();

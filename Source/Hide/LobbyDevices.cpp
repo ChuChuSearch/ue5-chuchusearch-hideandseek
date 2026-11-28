@@ -3,6 +3,7 @@
 #include "MyPlayerController.h"
 #include "MyPlayerState.h"
 #include "WaitRoomGameMode.h"
+#include "GhostCharacter.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -509,4 +510,69 @@ FString ALobbySettingsBoard::GetLabelSub(const AMyPlayerController* PC) const
         return FString::Printf(TEXT("최대 %d명 · 방장만 바꿀 수 있어요"), PC->GetLobbyGameSettings().MaxPlayers);
     }
     return TEXT("방장만 바꿀 수 있어요");
+}
+
+// =====================================================================
+// ALobbyGhostHole
+// =====================================================================
+
+ALobbyGhostHole::ALobbyGhostHole()
+{
+    LabelTitle = TEXT("유령 구멍");
+    LabelColor = Hex(146, 92, 232);
+    InteractRadius = 300.f;
+    LabelHeight = 220.f;
+
+    // 보라 테두리 + 검은 구멍 + 둘레 돌 네 개(구멍은 밟고 지나갈 수 있게 충돌 없음)
+    AddShape(TEXT("Rim"), true, FVector(0.f, 0.f, 3.f), FVector(320.f, 320.f, 6.f), false);
+    AddShape(TEXT("Hole"), true, FVector(0.f, 0.f, 5.f), FVector(250.f, 250.f, 6.f), false);
+    int32 Index = 0;
+    for (const FVector2D Dir : { FVector2D(0.7f, 0.7f), FVector2D(-0.7f, 0.7f), FVector2D(0.7f, -0.7f), FVector2D(-0.7f, -0.7f) })
+    {
+        AddShape(*FString::Printf(TEXT("Stone%d"), Index++), false, FVector(Dir.X * 190.f, Dir.Y * 190.f, 25.f), FVector(40.f, 40.f, 50.f), true);
+    }
+    ShapeColors = { Hex(146, 92, 232), Hex(20, 14, 30), Hex(110, 100, 120), Hex(110, 100, 120), Hex(110, 100, 120), Hex(110, 100, 120) };
+}
+
+bool ALobbyGhostHole::GetPrompt(const AMyPlayerController* PC, FString& OutText, bool& bOutEnabled) const
+{
+    const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+    if (!Pawn)
+    {
+        return false;
+    }
+    bOutEnabled = true;
+    if (const AGhostCharacter* Ghost = Cast<AGhostCharacter>(Pawn))
+    {
+        if (Ghost->IsPlacementMode())
+        {
+            OutText = TEXT("물체 놓기를 끝내면 돌아갈 수 있어요");
+            bOutEnabled = false;
+            return true;
+        }
+        OutText = TEXT("사람으로 돌아가기");
+        return true;
+    }
+    OutText = TEXT("유령 되어 보기");
+    return true;
+}
+
+bool ALobbyGhostHole::InteractLocal(AMyPlayerController* PC)
+{
+    // 유령이 물체를 놓는 중이면 E는 물체 회전이라 넘긴다
+    const AGhostCharacter* Ghost = PC ? Cast<AGhostCharacter>(PC->GetPawn()) : nullptr;
+    return !(Ghost && Ghost->IsPlacementMode());
+}
+
+void ALobbyGhostHole::InteractServer(AMyPlayerController* PC)
+{
+    if (AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr)
+    {
+        GM->ToggleLobbyGhost(PC, this);
+    }
+}
+
+FString ALobbyGhostHole::GetLabelSub(const AMyPlayerController* PC) const
+{
+    return TEXT("탈락하면 유령이 돼요 · 미리 날아 보기");
 }

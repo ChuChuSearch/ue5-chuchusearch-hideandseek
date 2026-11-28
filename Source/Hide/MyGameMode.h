@@ -27,6 +27,9 @@ public:
     // 게임에서 쓰는 캐릭터 클래스(대기실 로비 맵에서도 같은 캐릭터로 돌아다닌다)
     UClass* GetPlayerCharacterClass() const;
 
+    // 탈락하면 바뀌는 유령 캐릭터 클래스(대기실 유령 구멍 체험에서도 쓴다)
+    UClass* GetGhostCharacterClass() const;
+
     virtual void BeginPlay() override;
     virtual void PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
     virtual void PostLogin(APlayerController* NewPlayer) override;

@@ -9,6 +9,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/Pawn.h"
+#include "MyCharacter.h"
+#include "GhostCharacter.h"
 
 AWaitRoomGameMode::AWaitRoomGameMode()
 {
@@ -126,6 +128,149 @@ void AWaitRoomGameMode::DestroyLobbyPawns()
             PC->UnPossess();
             Pawn->Destroy();
         }
+    }
+}
+
+// ===== 로비 연습 =====
+
+void AWaitRoomGameMode::SetPlayerDefaults(APawn* PlayerPawn)
+{
+    Super::SetPlayerDefaults(PlayerPawn);
+    ApplyPracticeRole(PlayerPawn);
+}
+
+void AWaitRoomGameMode::ApplyPracticeRole(APawn* Pawn)
+{
+    AMyCharacter* MC = Cast<AMyCharacter>(Pawn);
+    const AMyPlayerState* PS = MC ? MC->GetPlayerState<AMyPlayerState>() : nullptr;
+    if (!MC || !PS)
+    {
+        return;
+    }
+
+    const bool bSeeker = PS->GetPreference() == ERolePreference::SeekerWish;
+    if (MC->IsSeeker() != bSeeker)
+    {
+        MC->SetIsSeeker_Server(bSeeker);
+    }
+}
+
+void AWaitRoomGameMode::ScheduleLobbyPropRespawn(TSubclassOf<AActor> PropClass, const FTransform& Transform)
+{
+    if (!PropClass || !GetWorld())
+    {
+        return;
+    }
+
+    FTimerHandle Handle;
+    GetWorldTimerManager().SetTimer(Handle,
+        FTimerDelegate::CreateUObject(this, &AWaitRoomGameMode::TryRespawnLobbyProp, PropClass, Transform),
+        LobbyPropRespawnSeconds, false);
+}
+
+void AWaitRoomGameMode::TryRespawnLobbyProp(TSubclassOf<AActor> PropClass, FTransform Transform)
+{
+    UWorld* World = GetWorld();
+    if (!World || !PropClass)
+    {
+        return;
+    }
+
+    // 그 자리에 누가 서 있으면 끼이지 않게 조금 뒤 다시
+    for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+    {
+        const APawn* Pawn = It->Get() ? It->Get()->GetPawn() : nullptr;
+        if (Pawn && FVector::Dist2D(Pawn->GetActorLocation(), Transform.GetLocation()) < 200.f)
+        {
+            FTimerHandle Handle;
+            GetWorldTimerManager().SetTimer(Handle,
+                FTimerDelegate::CreateUObject(this, &AWaitRoomGameMode::TryRespawnLobbyProp, PropClass, Transform),
+                2.f, false);
+            return;
+        }
+    }
+
+    FActorSpawnParameters Params;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    World->SpawnActor<AActor>(PropClass, FTransform(Transform.GetRotation(), Transform.GetLocation()), Params);
+}
+
+void AWaitRoomGameMode::ToggleLobbyGhost(APlayerController* PC, const AActor* Hole)
+{
+    UWorld* World = GetWorld();
+    APawn* OldPawn = PC ? PC->GetPawn() : nullptr;
+    if (!World || !OldPawn || !Hole)
+    {
+        return;
+    }
+
+    AMyPlayerController* MPC = Cast<AMyPlayerController>(PC);
+    const FVector HoleLoc = Hole->GetActorLocation();
+
+    FActorSpawnParameters Params;
+    Params.Owner = PC;
+    Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    if (Cast<AGhostCharacter>(OldPawn))
+    {
+        // 유령 → 사람: 구멍 옆에 캐릭터를 새로 만든다
+        UClass* CharClass = GetDefaultPawnClassForController(PC);
+        if (!CharClass)
+        {
+            return;
+        }
+        const FVector Loc = HoleLoc + Hole->GetActorForwardVector() * 250.f + FVector(0.f, 0.f, 120.f);
+        APawn* NewPawn = World->SpawnActor<APawn>(CharClass, Loc, FRotator(0.f, OldPawn->GetActorRotation().Yaw, 0.f), Params);
+        if (!NewPawn)
+        {
+            return;
+        }
+        PC->Possess(NewPawn);
+        OldPawn->Destroy();
+        ApplyPracticeRole(NewPawn);
+        if (MPC)
+        {
+            MPC->ClientEndLobbyGhost();
+        }
+        return;
+    }
+
+    AMyCharacter* MC = Cast<AMyCharacter>(OldPawn);
+    if (!MC)
+    {
+        return;
+    }
+
+    // 사람 → 유령: 게임에서 쓰는 유령 캐릭터(BP_MyGameMode 설정)를 구멍 위에 만든다
+    UClass* GhostClass = nullptr;
+    if (UClass* GameModeClass = LoadGameModeClassFromTravelURL())
+    {
+        if (const AMyGameMode* GameModeCDO = Cast<AMyGameMode>(GameModeClass->GetDefaultObject()))
+        {
+            GhostClass = GameModeCDO->GetGhostCharacterClass();
+        }
+    }
+    if (!GhostClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ToggleLobbyGhost: ghost class not found"));
+        return;
+    }
+
+    if (MC->IsPossessing())
+    {
+        MC->ForceReleasePossessedProp_Server();
+    }
+
+    APawn* Ghost = World->SpawnActor<APawn>(GhostClass, HoleLoc + FVector(0.f, 0.f, 250.f), FRotator(0.f, MC->GetActorRotation().Yaw, 0.f), Params);
+    if (!Ghost)
+    {
+        return;
+    }
+    PC->Possess(Ghost);
+    MC->Destroy();
+    if (MPC)
+    {
+        MPC->ClientFinalizeGhostTransition();
     }
 }
 

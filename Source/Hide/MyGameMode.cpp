@@ -34,6 +34,11 @@ UClass* AMyGameMode::GetPlayerCharacterClass() const
     return PlayerCharacterClass.Get();
 }
 
+UClass* AMyGameMode::GetGhostCharacterClass() const
+{
+    return GhostCharacterClass.Get();
+}
+
 void AMyGameMode::FillPhaseSettings(FLobbyGameSettings& OutSettings) const
 {
     OutSettings.HideTimeSeconds = FMath::RoundToInt(HideTimeSeconds);

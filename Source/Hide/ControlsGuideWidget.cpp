@@ -199,7 +199,8 @@ void UControlsGuideWidget::RebuildRows()
         RibbonColor = Hex(236, 152, 42);
         AddRow(TEXT("WASD"), TEXT("이동"));
         AddRow(TEXT("Space"), TEXT("점프"));
-        AddRow(TEXT("E"), TEXT("발판 · 역할 문 · 게시판 사용"));
+        AddRow(TEXT("E"), TEXT("발판 · 역할 문 · 게시판 · 유령 구멍"));
+        AddRow(TEXT("F / 우클릭"), TEXT("물체에 숨기 연습"));
         AddRow(TEXT("Tab (꾹)"), TEXT("참가자 목록"));
         AddRow(TEXT("Enter"), TEXT("채팅"));
         AddRow(TEXT("ESC / F10"), TEXT("설정"));

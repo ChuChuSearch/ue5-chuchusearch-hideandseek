@@ -55,6 +55,21 @@ public:
     // 닉네임이 정해지면(입력이 잠깐 멈추면) 한 번만 입장 안내를 보낸다
     void NotifyNicknameSet(AMyPlayerState* PS);
 
+    // ===== 로비 연습 =====
+    // 술래 지망이면 술래로, 아니면 러너로 연습한다(역할 문으로 지망을 바꿀 때, 캐릭터가 생길 때)
+    void ApplyPracticeRole(APawn* Pawn);
+
+    // 부서진 물체를 잠시 뒤 같은 자리에 다시 놓는다
+    void ScheduleLobbyPropRespawn(TSubclassOf<AActor> PropClass, const FTransform& Transform);
+
+    // 유령 구멍: 사람이면 유령으로, 유령이면 다시 사람으로
+    void ToggleLobbyGhost(APlayerController* PC, const AActor* Hole);
+
+    virtual void SetPlayerDefaults(APawn* PlayerPawn) override;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "0.5"))
+    float LobbyPropRespawnSeconds = 5.f;
+
     // 같은 사람이 이보다 자주 보내면 버린다(초)
     UPROPERTY(EditDefaultsOnly, Category = "Lobby|Chat", meta = (ClampMin = "0.0"))
     float ChatMinIntervalSeconds = 0.5f;
@@ -89,6 +104,9 @@ private:
 
     // 게임 맵으로 떠나기 전에 로비 캐릭터를 치운다
     void DestroyLobbyPawns();
+
+    // 물체를 다시 놓는다. 그 자리에 사람이 있으면 조금 뒤 다시 시도.
+    void TryRespawnLobbyProp(TSubclassOf<AActor> PropClass, FTransform Transform);
 
     int32 NextLobbyJoinOrder = 1;
 

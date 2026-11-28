@@ -300,6 +300,11 @@ void UTitleWidget::BuildTree()
         }
     }
     NicknameBox->SetText(FText::FromString(SavedNick.Left(MaxNicknameLen)));
+    // 처음 실행이라 지난 주소가 없으면 전용 서버 주소를 채워 둔다(DefaultGame.ini의 [Hide.Title] DefaultServerAddress)
+    if (SavedAddress.IsEmpty() && GConfig)
+    {
+        GConfig->GetString(TEXT("Hide.Title"), TEXT("DefaultServerAddress"), SavedAddress, GGameIni);
+    }
     AddressBox->SetText(FText::FromString(SavedAddress));
 }
 

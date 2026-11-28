@@ -421,11 +421,11 @@ private:
     USoundBase* FeverMusic = nullptr;
 
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
-    float MusicVolume = 0.5f;
+    float MusicVolume = 0.25f;
 
-    // 대기실 배경음만 따로 더 키운다(MusicVolume에 곱함). 대기실은 다른 소리가 거의 없어 0.5로는 너무 작게 들렸다.
+    // 대기실 배경음만 따로 더 키운다(MusicVolume에 곱함). 대기실은 다른 소리가 거의 없어 0.5로는 너무 작게 들렸다. 처음 값의 2배(최종 음량 2.0).
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
-    float WaitRoomMusicVolumeScale = 2.0f;
+    float WaitRoomMusicVolumeScale = 8.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Music", meta = (ClampMin = "0.0"))
     float MusicFadeSeconds = 1.0f;

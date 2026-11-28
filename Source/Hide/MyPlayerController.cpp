@@ -135,6 +135,8 @@ void AMyPlayerController::BeginPlay()
     {
         CloseGameRoomUI();
         ShowTitleUI();
+        // 처음 화면도 로비와 같은 배경음(같은 음량 배율)
+        PlayMusic(WaitRoomMusic);
     }
     else
     {
@@ -2931,7 +2933,8 @@ void AMyPlayerController::PlayMusic(USoundBase* Music)
     MusicComponent = UGameplayStatics::SpawnSound2D(this, Music, TrackVolume, 1.f, 0.f, nullptr, false, true);
     if (MusicComponent && MusicFadeSeconds > 0.f)
     {
-        MusicComponent->FadeIn(MusicFadeSeconds, TrackVolume);
+        // 음량은 SpawnSound2D에서 이미 정했으므로 페이드는 1(그대로)까지만. 여기서 또 곱하면 음량이 제곱으로 들어간다.
+        MusicComponent->FadeIn(MusicFadeSeconds, 1.f);
     }
     CurrentMusic = Music;
 }

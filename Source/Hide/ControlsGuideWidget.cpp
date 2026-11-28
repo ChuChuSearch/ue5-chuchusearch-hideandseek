@@ -187,6 +187,15 @@ void UControlsGuideWidget::RebuildRows()
 
     switch (Role)
     {
+    case EGuideRole::Lobby:
+        Title = TEXT("로비 조작법");
+        RibbonColor = Hex(236, 152, 42);
+        AddRow(TEXT("WASD"), TEXT("이동"));
+        AddRow(TEXT("Space"), TEXT("점프"));
+        AddRow(TEXT("Tab"), TEXT("대기실 메뉴 (준비 · 역할 · 채팅)"));
+        AddRow(TEXT("ESC / F10"), TEXT("설정"));
+        break;
+
     case EGuideRole::Runner:
         Title = TEXT("러너 조작법");
         RibbonColor = Hex(64, 120, 230);

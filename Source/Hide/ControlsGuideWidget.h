@@ -13,7 +13,8 @@ enum class EGuideRole : uint8
     None,
     Runner,
     Seeker,
-    Ghost
+    Ghost,
+    Lobby   // 대기실 로비 맵에서 돌아다닐 때
 };
 
 // 역할별 조작법 안내(화면 왼쪽 아래). 역할이 바뀌면 펼쳐서 보여주고,

@@ -55,6 +55,8 @@
 #include "Sound/SoundMix.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Application/NavigationConfig.h"
+#include "Blueprint/WidgetTree.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -164,6 +166,14 @@ void AMyPlayerController::SetupInputComponent()
         {
             EIC->BindAction(IA_GhostPlacementRefresh, ETriggerEvent::Started, this, &AMyPlayerController::OnGhostPlacementRefreshPressed);
         }
+    }
+
+    // Tab은 대기실 메뉴 / 점수판 키로 쓴다. 버튼을 누른 뒤 Tab이 UI 포커스 이동에 먹히지 않게 Tab 이동을 끈다.
+    if (IsLocalController() && FSlateApplication::IsInitialized())
+    {
+        TSharedRef<FNavigationConfig> NavConfig = MakeShared<FNavigationConfig>();
+        NavConfig->bTabNavigation = false;
+        FSlateApplication::Get().SetNavigationConfig(NavConfig);
     }
 
     // 볼륨 설정 창. 에디터 PIE에서는 ESC가 플레이 종료라서 F10도 같이 쓴다.
@@ -395,7 +405,15 @@ void AMyPlayerController::UpdateControlsGuide()
     const AMyGameState* GS = GetWorld()->GetGameState<AMyGameState>();
     const bool bEnded = GS && GS->GetGamePhase() == EGamePhase::Ended;
 
-    if (bGameMap && !bEnded)
+    if (IsInWaitRoomMap())
+    {
+        // 로비 맵: 캐릭터가 생기면 로비 조작법(Tab 메뉴 안내 포함)
+        if (GetPawn())
+        {
+            GuideRole = EGuideRole::Lobby;
+        }
+    }
+    else if (bGameMap && !bEnded)
     {
         if (GetGhostCharacter())
         {
@@ -425,6 +443,12 @@ void AMyPlayerController::UpdateControlsGuide()
     {
         // 탈락 알림(850)/피격 효과(900)/설정 창(1000) 아래
         ControlsGuideWidget->AddToViewport(800);
+
+        // 대기실 메뉴가 열려 있으면 메뉴를 가리지 않게 숨겨 둔다
+        if (bLobbyMenuOpen)
+        {
+            ControlsGuideWidget->SetVisibility(ESlateVisibility::Collapsed);
+        }
     }
 
     ControlsGuideWidget->SetRole(GuideRole);
@@ -442,6 +466,13 @@ void AMyPlayerController::ShowScoreboard()
 {
     if (!IsLocalController() || SettingsWidget)
     {
+        return;
+    }
+
+    // 대기실(로비 맵)에서 Tab은 대기실 메뉴 열기/닫기
+    if (IsInWaitRoomMap())
+    {
+        ToggleLobbyMenu();
         return;
     }
 
@@ -633,6 +664,12 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
 {
     Super::PlayerTick(DeltaTime);
 
+    // 대기실 메뉴가 열려 있는 동안 캐릭터 이동 / 시점 막기를 유지한다
+    if (bLobbyMenuOpen)
+    {
+        ApplyLobbyMenuInput();
+    }
+
     UpdateHovered();
     UpdateGhostUI();
     UpdatePasswordInputState();
@@ -699,6 +736,11 @@ void AMyPlayerController::PlayerTick(float DeltaTime)
 
 void AMyPlayerController::OnPossessPressed(const FInputActionValue& Value)
 {
+    if (bLobbyMenuOpen)
+    {
+        return;
+    }
+
     if (TryOpenPasswordInput())
     {
         return;
@@ -1296,15 +1338,116 @@ void AMyPlayerController::ShowWaitRoomUI()
         LobbyPanelWidget->AddToViewport(10);
     }
 
-    // UI 전용 입력이면 F10 / ESC 같은 키가 플레이어 컨트롤러까지 오지 않아 설정 창을 열 수 없다.
-    // 대기실에는 캐릭터가 없어서 게임 입력이 들어가도 문제가 없으므로 게임+UI 겸용으로 둔다.
-    // (닉네임 / 채팅 칸에 글을 쓰는 동안 글자 키는 글 상자가 먼저 받는다)
-    FInputModeGameAndUI Mode;
-    Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-    Mode.SetHideCursorDuringCapture(false);
-    SetInputMode(Mode);
+    // 로비 맵이 보이도록 화면 전체를 덮는 대기실 배경 그림은 숨긴다(메뉴는 맵 위에 뜬다)
+    if (WaitRoomWidgetInstance->WidgetTree)
+    {
+        WaitRoomWidgetInstance->WidgetTree->ForEachWidget([](UWidget* Widget)
+        {
+            const UImage* Image = Cast<UImage>(Widget);
+            const UObject* Resource = Image ? Image->GetBrush().GetResourceObject() : nullptr;
+            if (Resource && Resource->GetName().Contains(TEXT("Mainscreen_Background")))
+            {
+                Widget->SetVisibility(ESlateVisibility::Collapsed);
+            }
+        });
+    }
 
-    bShowMouseCursor = true;
+    // 닉네임이 아직 없으면(처음 들어온 경우) 메뉴를 열어 두고, 있으면 바로 맵을 돌아다닌다
+    const UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr;
+    const bool bNeedsNickname = !NickSub || NickSub->GetNickname().IsEmpty();
+    bLobbyMenuOpen = !bNeedsNickname; // SetLobbyMenuOpen이 바뀐 경우에만 처리하므로 반대값에서 시작
+    SetLobbyMenuOpen(bNeedsNickname);
+}
+
+bool AMyPlayerController::IsInWaitRoomMap() const
+{
+    return UGameplayStatics::GetCurrentLevelName(this, true) == TEXT("WaitRoomMap");
+}
+
+void AMyPlayerController::ToggleLobbyMenu()
+{
+    if (!IsLocalController() || !WaitRoomWidgetInstance)
+    {
+        return;
+    }
+
+    SetLobbyMenuOpen(!bLobbyMenuOpen);
+}
+
+void AMyPlayerController::SetLobbyMenuOpen(bool bOpen)
+{
+    if (!IsLocalController() || bLobbyMenuOpen == bOpen)
+    {
+        return;
+    }
+
+    bLobbyMenuOpen = bOpen;
+
+    // 닫혀 있어도 채팅이 쌓이도록 위젯은 지우지 않고 숨기기만 한다
+    const ESlateVisibility MenuVisibility = bOpen ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
+    if (WaitRoomWidgetInstance)
+    {
+        WaitRoomWidgetInstance->SetVisibility(MenuVisibility);
+    }
+    if (LobbyPanelWidget)
+    {
+        LobbyPanelWidget->SetVisibility(MenuVisibility);
+    }
+    if (!bOpen && LobbySettingsWidget)
+    {
+        LobbySettingsWidget->RemoveFromParent();
+        LobbySettingsWidget = nullptr;
+    }
+    if (ControlsGuideWidget)
+    {
+        ControlsGuideWidget->SetVisibility(bOpen ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+    }
+
+    // 메뉴를 여닫는 순간 누르고 있던 키가 캐릭터에 남지 않게
+    FlushPressedKeys();
+
+    if (bOpen)
+    {
+        // UI 전용 입력이면 Tab / ESC / F10이 플레이어 컨트롤러까지 오지 않으므로 게임+UI 겸용.
+        // 대신 캐릭터 이동과 시점 회전은 막는다(글 상자에 쓰는 글자는 글 상자가 먼저 받는다).
+        FInputModeGameAndUI Mode;
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        Mode.SetHideCursorDuringCapture(false);
+        SetInputMode(Mode);
+        bShowMouseCursor = true;
+    }
+    else
+    {
+        // 글 상자에 남은 키보드 포커스를 게임 화면으로 돌려준다
+        FSlateApplication::Get().SetAllUserFocusToGameViewport();
+        SetInputMode(FInputModeGameOnly());
+        bShowMouseCursor = false;
+    }
+
+    ApplyLobbyMenuInput();
+}
+
+void AMyPlayerController::ApplyLobbyMenuInput()
+{
+    // 이동 / 시점 무시는 횟수로 쌓이므로 상태가 다를 때만 바꾼다
+    // (캐릭터를 새로 조종하면 엔진이 무시 상태를 초기화하므로 PlayerTick에서도 맞춘다)
+    const bool bBlock = bLobbyMenuOpen && !SettingsWidget;
+    if (bBlock)
+    {
+        if (!IsMoveInputIgnored())
+        {
+            SetIgnoreMoveInput(true);
+        }
+        if (!IsLookInputIgnored())
+        {
+            SetIgnoreLookInput(true);
+        }
+    }
+    else
+    {
+        ResetIgnoreMoveInput();
+        ResetIgnoreLookInput();
+    }
 }
 
 void AMyPlayerController::OnNicknameTextChanged(const FText& Text)
@@ -1519,6 +1662,18 @@ void AMyPlayerController::CloseWaitRoomUI()
         LobbySettingsWidget = nullptr;
     }
 
+    // 대기실 메뉴 때문에 막아 둔 이동 / 시점을 풀어 둔다
+    if (bLobbyMenuOpen)
+    {
+        bLobbyMenuOpen = false;
+        ResetIgnoreMoveInput();
+        ResetIgnoreLookInput();
+    }
+    if (ControlsGuideWidget)
+    {
+        ControlsGuideWidget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+    }
+
     FInputModeGameOnly Mode;
     SetInputMode(Mode);
     bShowMouseCursor = false;
@@ -1526,8 +1681,8 @@ void AMyPlayerController::CloseWaitRoomUI()
 
 void AMyPlayerController::OnAttackPressed(const FInputActionValue& Value)
 {
-    // 설정 창이 열려 있으면 클릭은 UI 조작이다(투사체 발사 금지)
-    if (SettingsWidget)
+    // 설정 창 / 대기실 메뉴가 열려 있으면 클릭은 UI 조작이다(투사체 발사 금지)
+    if (SettingsWidget || bLobbyMenuOpen)
     {
         return;
     }

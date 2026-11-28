@@ -23,6 +23,9 @@ public:
     virtual void Logout(AController* Exiting) override;
     virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
+    // 로비 맵에서 돌아다닐 캐릭터. LobbyPawnClass가 비어 있으면 게임 모드(BP_MyGameMode)의 캐릭터를 쓴다.
+    virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
+
     UFUNCTION(BlueprintCallable)
     void StartGame(APlayerController* RequestPC);
 
@@ -60,6 +63,10 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Lobby")
     int32 MaxLobbyPlayers = 4;
 
+    // 로비 맵 캐릭터(비우면 게임 맵 게임 모드의 PlayerCharacterClass)
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby")
+    TSubclassOf<APawn> LobbyPawnClass;
+
     UPROPERTY(EditDefaultsOnly, Category = "Travel")
     TSoftObjectPtr<UWorld> GameMapAsset;
 
@@ -73,6 +80,12 @@ private:
     bool PickSeeker(AMyPlayerState*& OutSeekerPS) const;
 
     FString BuildGameTravelURL() const;
+
+    // 게임 맵에서 쓸 게임 모드 클래스(이동 주소의 ?game=)
+    UClass* LoadGameModeClassFromTravelURL() const;
+
+    // 게임 맵으로 떠나기 전에 로비 캐릭터를 치운다
+    void DestroyLobbyPawns();
 
     int32 NextLobbyJoinOrder = 1;
 

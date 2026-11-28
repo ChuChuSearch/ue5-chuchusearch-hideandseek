@@ -268,6 +268,14 @@ private:
 
     void ShowWaitRoomUI();
 
+    // ===== 대기실 로비 맵 =====
+    // 대기실(로비 맵)에서는 캐릭터로 돌아다니고, 대기실 메뉴(준비 / 역할 지망 / 닉네임 / 채팅)는 Tab으로 열고 닫는다.
+    bool IsInWaitRoomMap() const;
+    void ToggleLobbyMenu();
+    void SetLobbyMenuOpen(bool bOpen);
+    void ApplyLobbyMenuInput();
+    bool bLobbyMenuOpen = false;
+
     UFUNCTION(Server, Reliable)
     void ServerRequestStartGame();
 

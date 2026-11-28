@@ -8,6 +8,7 @@
 #include "MyGameMode.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/GameInstance.h"
+#include "GameFramework/Pawn.h"
 
 AWaitRoomGameMode::AWaitRoomGameMode()
 {
@@ -69,18 +70,63 @@ void AWaitRoomGameMode::InitializeLobbySettingsDefaults()
     Defaults.MaxPlayers = MaxLobbyPlayers;
 
     // 게임 맵에서 쓸 게임 모드(…?game=…_C)의 블루프린트 기본값에서 단계 시간을 읽는다
-    const FString URL = BuildGameTravelURL();
-    int32 OptionStart = INDEX_NONE;
-    if (URL.FindChar(TEXT('?'), OptionStart))
+    if (UClass* GameClass = LoadGameModeClassFromTravelURL())
     {
-        const FString GameClassPath = UGameplayStatics::ParseOption(URL.Mid(OptionStart), TEXT("game"));
-        if (UClass* GameClass = GameClassPath.IsEmpty() ? nullptr : LoadClass<AMyGameMode>(nullptr, *GameClassPath))
-        {
-            GameClass->GetDefaultObject<AMyGameMode>()->FillPhaseSettings(Defaults);
-        }
+        GameClass->GetDefaultObject<AMyGameMode>()->FillPhaseSettings(Defaults);
     }
 
     Sub->InitializeDefaults(Defaults);
+}
+
+UClass* AWaitRoomGameMode::LoadGameModeClassFromTravelURL() const
+{
+    const FString URL = BuildGameTravelURL();
+    int32 OptionStart = INDEX_NONE;
+    if (!URL.FindChar(TEXT('?'), OptionStart))
+    {
+        return nullptr;
+    }
+
+    const FString GameClassPath = UGameplayStatics::ParseOption(URL.Mid(OptionStart), TEXT("game"));
+    return GameClassPath.IsEmpty() ? nullptr : LoadClass<AMyGameMode>(nullptr, *GameClassPath);
+}
+
+UClass* AWaitRoomGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
+{
+    if (LobbyPawnClass)
+    {
+        return LobbyPawnClass;
+    }
+
+    // 게임 맵과 같은 캐릭터로 로비 맵을 돌아다닌다(처음 한 번 찾아서 기억)
+    if (!DefaultPawnClass)
+    {
+        if (UClass* GameClass = LoadGameModeClassFromTravelURL())
+        {
+            DefaultPawnClass = GameClass->GetDefaultObject<AMyGameMode>()->GetPlayerCharacterClass();
+        }
+    }
+
+    return DefaultPawnClass;
+}
+
+void AWaitRoomGameMode::DestroyLobbyPawns()
+{
+    if (!GetWorld())
+    {
+        return;
+    }
+
+    for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        APlayerController* PC = It->Get();
+        APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+        if (Pawn)
+        {
+            PC->UnPossess();
+            Pawn->Destroy();
+        }
+    }
 }
 
 FLobbyGameSettings AWaitRoomGameMode::GetLobbyGameSettings() const
@@ -483,6 +529,14 @@ bool AWaitRoomGameMode::TryStartGame(APlayerController* RequestPC, FString* OutF
     }
 
     const FString TravelURL = BuildGameTravelURL();
-    return GetWorld()->ServerTravel(TravelURL, false);
+    if (!GetWorld()->ServerTravel(TravelURL, false))
+    {
+        return false;
+    }
+
+    // 이동은 다음 틱부터 시작된다. 로비 캐릭터가 게임 맵으로 따라가지 않도록 지금 치운다
+    // (게임 맵에서는 역할에 맞춰 새로 만든다).
+    DestroyLobbyPawns();
+    return true;
 }
 

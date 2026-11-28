@@ -464,14 +464,9 @@ private:
     UPROPERTY(EditDefaultsOnly, Category = "Sound|Result")
     USoundBase* LoseSound = nullptr;
 
-    UPROPERTY()
-    UAudioComponent* MusicComponent = nullptr;
-
+    // 배경음 자체는 UMusicSubsystem이 맡는다(맵이 바뀌어도 이어지게)
     UPROPERTY()
     UAudioComponent* FeverLoopComponent = nullptr;
-
-    UPROPERTY()
-    USoundBase* CurrentMusic = nullptr;
 
     TWeakObjectPtr<AMyGameState> LastSoundGameState;
     EGamePhase LastSoundPhase = EGamePhase::None;

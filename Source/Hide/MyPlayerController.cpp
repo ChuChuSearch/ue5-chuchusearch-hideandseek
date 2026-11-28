@@ -59,6 +59,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "TitleWidget.h"
+#include "MusicSubsystem.h"
 #include "LobbyDevices.h"
 #include "LobbyHudWidget.h"
 #include "UObject/ConstructorHelpers.h"
@@ -643,7 +644,12 @@ void AMyPlayerController::LeaveToConnectScreen()
 
     // 설정 저장과 창 정리는 평소 닫을 때와 같은 경로로
     CloseSettingsMenu();
-    StopMusic();
+    // 로비 배경음은 처음 화면에서도 같은 곡이라 끊지 않고 이어 간다(게임 음악이면 멈춘다)
+    const UMusicSubsystem* MusicSub = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMusicSubsystem>() : nullptr;
+    if (!MusicSub || MusicSub->GetCurrentMusic() != WaitRoomMusic)
+    {
+        StopMusic();
+    }
 
     // 접속 화면 맵을 열면 서버와의 연결이 끊기고(방장이면 방이 닫힌다) 새 맵의 UI가 뜬다
     UGameplayStatics::OpenLevel(this, FName(TEXT("ConnectMap")));
@@ -1346,12 +1352,14 @@ void AMyPlayerController::RemoveLegacyConnectWidget()
 
     FInputModeUIOnly Mode;
     Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-    if (UWidget* Focus = TitleWidget->GetInitialFocusWidget())
-    {
-        Mode.SetWidgetToFocus(Focus->TakeWidget());
-    }
     SetInputMode(Mode);
     SetShowMouseCursor(true);
+
+    // 글 상자는 입력 모드의 포커스 대상으로 넘기면 감싼 위젯이 잡혀 경고가 난다. 직접 키보드 포커스를 준다.
+    if (UWidget* Focus = TitleWidget->GetInitialFocusWidget())
+    {
+        Focus->SetKeyboardFocus();
+    }
 }
 
 bool AMyPlayerController::IsInWaitRoomMap() const
@@ -2915,46 +2923,24 @@ void AMyPlayerController::PlayMusic(USoundBase* Music)
         return;
     }
 
-    // 같은 곡이 이미 재생 중이면 끊지 않고 이어서 재생
-    if (Music && Music == CurrentMusic && IsValid(MusicComponent) && MusicComponent->IsPlaying())
+    UMusicSubsystem* MusicSub = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMusicSubsystem>() : nullptr;
+    if (!MusicSub)
     {
         return;
     }
 
-    StopMusic();
-
-    if (!Music)
-    {
-        return;
-    }
-
-    // 레벨 이동 시 자동 정리되도록 bPersistAcrossLevelTransition=false
-    const float TrackVolume = MusicVolume * (Music == WaitRoomMusic ? WaitRoomMusicVolumeScale : 1.f);
-    MusicComponent = UGameplayStatics::SpawnSound2D(this, Music, TrackVolume, 1.f, 0.f, nullptr, false, true);
-    if (MusicComponent && MusicFadeSeconds > 0.f)
-    {
-        // 음량은 SpawnSound2D에서 이미 정했으므로 페이드는 1(그대로)까지만. 여기서 또 곱하면 음량이 제곱으로 들어간다.
-        MusicComponent->FadeIn(MusicFadeSeconds, 1.f);
-    }
-    CurrentMusic = Music;
+    // 처음 화면 / 로비 배경음은 맵이 바뀌어도 끊기지 않고 이어진다(같은 곡이면 그대로 둔다)
+    const bool bLobbyMusic = Music && Music == WaitRoomMusic;
+    const float TrackVolume = MusicVolume * (bLobbyMusic ? WaitRoomMusicVolumeScale : 1.f);
+    MusicSub->Play(this, Music, TrackVolume, MusicFadeSeconds, bLobbyMusic);
 }
 
 void AMyPlayerController::StopMusic()
 {
-    if (IsValid(MusicComponent))
+    if (UMusicSubsystem* MusicSub = GetGameInstance() ? GetGameInstance()->GetSubsystem<UMusicSubsystem>() : nullptr)
     {
-        if (MusicFadeSeconds > 0.f)
-        {
-            MusicComponent->FadeOut(MusicFadeSeconds, 0.f);
-        }
-        else
-        {
-            MusicComponent->Stop();
-        }
+        MusicSub->Stop(MusicFadeSeconds);
     }
-
-    MusicComponent = nullptr;
-    CurrentMusic = nullptr;
 }
 
 void AMyPlayerController::StopFeverLoop()

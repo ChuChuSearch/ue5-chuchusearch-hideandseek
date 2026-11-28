@@ -615,21 +615,6 @@ void ULobbyPanelWidget::AddChatLine(const FString& SenderName, const FString& Me
     bScrollToEndPending = true;
 }
 
-void ULobbyPanelWidget::OnGameSettingsClicked()
-{
-    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
-    {
-        PC->ToggleLobbySettingsWindow();
-    }
-}
-
-void ULobbyPanelWidget::OnSettingsClicked()
-{
-    if (AMyPlayerController* PC = Cast<AMyPlayerController>(GetOwningPlayer()))
-    {
-        PC->ToggleSettingsMenu();
-    }
-}
 
 void ULobbyPanelWidget::SubmitChat()
 {

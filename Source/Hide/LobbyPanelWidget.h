@@ -12,8 +12,8 @@ class UScrollBox;
 class UTextBlock;
 class UVerticalBox;
 
-// 대기실 화면 오른쪽 패널: 위는 참가자 목록(닉네임, 방장, 술래/러너 지망), 아래는 채팅.
-// WBP_WaitRoom 위에 따로 띄운다. WBP 없이 C++에서 그리고, 설정 창과 같은 크림색 패널 + 리본 제목 톤.
+// 대기실(로비 맵) 화면: 왼쪽 아래 채팅(Enter로 입력)과 Tab을 누르고 있는 동안 뜨는 참가자 목록
+// (닉네임, 방장, 술래/러너 지망, 준비). WBP 없이 C++에서 그리고, 설정 창과 같은 크림색 패널 + 리본 제목 톤.
 UCLASS()
 class HIDE_API ULobbyPanelWidget : public UUserWidget
 {
@@ -48,12 +48,6 @@ private:
     UWidget* MakeChip(const FString& Text, const FLinearColor& Fill, const FLinearColor& TextColor, int32 FontSize);
 
     void UpdateReadyArea(const TArray<const AMyPlayerState*>& Players, const AMyPlayerState* LocalPS);
-
-    UFUNCTION()
-    void OnSettingsClicked();
-
-    UFUNCTION()
-    void OnGameSettingsClicked();
 
     void SubmitChat();
 

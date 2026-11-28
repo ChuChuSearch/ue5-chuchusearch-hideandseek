@@ -1,6 +1,9 @@
 #include "TitleWidget.h"
 
 #include "NicknameLocalSubsystem.h"
+#include "ConnectionNoticeSubsystem.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -428,6 +431,13 @@ void UTitleWidget::OnHostClicked()
 
 void UTitleWidget::OnJoinClicked()
 {
+    // 접속 중에는 이 버튼이 "취소"
+    if (bConnecting)
+    {
+        CancelConnect();
+        return;
+    }
+
     if (bLeaving || !CommitNickname())
     {
         return;
@@ -452,13 +462,48 @@ void UTitleWidget::OnJoinClicked()
         return;
     }
 
-    bLeaving = true;
+    bConnecting = true;
     SetStatus(FString::Printf(TEXT("%s 에 접속하는 중…"), *Address), false);
     if (HostButton) HostButton->SetIsEnabled(false);
-    if (JoinButton) JoinButton->SetIsEnabled(false);
+    SetJoinButtonLabel(TEXT("취소"));
 
-    // 접속에 실패하면 엔진이 기본 맵(이 화면)으로 돌려보낸다
+    // 접속에 실패하면 엔진이 기본 맵(이 화면)으로 돌려보내고, 이유는 팝업으로 알려 준다
     PC->ClientTravel(Address, TRAVEL_Absolute);
+}
+
+void UTitleWidget::CancelConnect()
+{
+    // 취소로 끊기는 것이니 "서버와 연결할 수 없어요" 팝업은 띄우지 않는다
+    if (UGameInstance* GI = GetGameInstance())
+    {
+        if (UConnectionNoticeSubsystem* Notice = GI->GetSubsystem<UConnectionNoticeSubsystem>())
+        {
+            Notice->SuppressFailuresForCancel();
+        }
+    }
+
+    // 아직 접속을 시작하기 전(다음 틱에 시작)이면 예약된 주소를 지우고, 이미 시작했으면 접속 시도를 멈춘다
+    if (GEngine && GetWorld())
+    {
+        if (FWorldContext* Context = GEngine->GetWorldContextFromWorld(GetWorld()))
+        {
+            Context->TravelURL.Empty();
+        }
+        GEngine->CancelPending(GetWorld());
+    }
+
+    bConnecting = false;
+    if (HostButton) HostButton->SetIsEnabled(true);
+    SetJoinButtonLabel(TEXT("접속하기"));
+    SetStatus(TEXT("접속을 취소했어요"), false);
+}
+
+void UTitleWidget::SetJoinButtonLabel(const FString& Label)
+{
+    if (UTextBlock* Text = JoinButton ? Cast<UTextBlock>(JoinButton->GetContent()) : nullptr)
+    {
+        Text->SetText(FText::FromString(Label));
+    }
 }
 
 void UTitleWidget::OnNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod)
@@ -473,7 +518,7 @@ void UTitleWidget::OnNicknameCommitted(const FText& Text, ETextCommit::Type Comm
 void UTitleWidget::OnAddressCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
     // 주소에서 Enter → 접속하기
-    if (CommitMethod == ETextCommit::OnEnter)
+    if (CommitMethod == ETextCommit::OnEnter && !bConnecting)
     {
         OnJoinClicked();
     }

@@ -41,8 +41,6 @@
 #include "Engine/Texture2D.h"
 #include "Camera/CameraActor.h"
 #include "EngineUtils.h"
-#include "RoleChoiceButtonWidget.h"
-#include "ReadyButtonWidget.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
@@ -1581,22 +1579,6 @@ void AMyPlayerController::ApplyLobbyMenuInput()
     }
 }
 
-void AMyPlayerController::OnNicknameTextChanged(const FText& Text)
-{
-    PendingNickname = Text.ToString();
-
-    // 글자마다 보내지 않고, 입력이 잠깐 멈추면 한 번 보낸다
-    GetWorldTimerManager().SetTimer(TH_NicknameSend, this, &AMyPlayerController::SendPendingNickname, 0.35f, false);
-}
-
-void AMyPlayerController::OnNicknameTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
-{
-    // Enter를 누르거나 다른 곳을 클릭하면 바로 보낸다
-    PendingNickname = Text.ToString();
-    GetWorldTimerManager().ClearTimer(TH_NicknameSend);
-    SendPendingNickname();
-}
-
 void AMyPlayerController::SendPendingNickname()
 {
     const FString Nickname = PendingNickname.TrimStartAndEnd();
@@ -1619,46 +1601,6 @@ void AMyPlayerController::SendPendingNickname()
     if (UNicknameLocalSubsystem* NickSub = GetLocalPlayer() ? GetLocalPlayer()->GetSubsystem<UNicknameLocalSubsystem>() : nullptr)
     {
         NickSub->SetNickname(Nickname);
-    }
-}
-
-void AMyPlayerController::UI_RequestStartGame()
-{
-    if (!IsLocalController()) return;
-
-    // 입력 직후 바로 시작을 눌러도 대기 중인 닉네임을 먼저 보낸다
-    if (GetWorldTimerManager().IsTimerActive(TH_NicknameSend))
-    {
-        GetWorldTimerManager().ClearTimer(TH_NicknameSend);
-        SendPendingNickname();
-    }
-
-    ServerRequestStartGame();
-}
-
-void AMyPlayerController::ServerRequestStartGame_Implementation()
-{
-    if (!HasAuthority()) return;
-
-    // 방장이 아니거나 인원이 맞지 않으면 시작되지 않으므로, 실제로 시작될 때만 UI를 닫는다.
-    AWaitRoomGameMode* GM = GetWorld() ? GetWorld()->GetAuthGameMode<AWaitRoomGameMode>() : nullptr;
-    FString FailReason;
-    if (GM && GM->TryStartGame(this, &FailReason))
-    {
-        ClientCloseWaitRoomUI();
-    }
-    else if (!FailReason.IsEmpty())
-    {
-        // 왜 시작이 안 됐는지 누른 사람 채팅 칸에 안내
-        ClientReceiveLobbyChat(FString(), FailReason, true);
-    }
-}
-
-void AMyPlayerController::RequestToggleReady()
-{
-    if (AMyPlayerState* PS = GetPlayerState<AMyPlayerState>())
-    {
-        PS->ServerSetReady(!PS->IsReady());
     }
 }
 
@@ -1687,12 +1629,6 @@ void AMyPlayerController::ClientEnterWaitRoomUI_Implementation()
     {
         GameResultWidgetInstance->RemoveFromParent();
         GameResultWidgetInstance = nullptr;
-    }
-
-    if (WaitRoomWidgetInstance)
-    {
-        WaitRoomWidgetInstance->RemoveFromParent();
-        WaitRoomWidgetInstance = nullptr;
     }
 
     ShowWaitRoomUI();
@@ -1801,12 +1737,6 @@ void AMyPlayerController::CloseWaitRoomUI()
     {
         GhostUIWidgetInstance->RemoveFromParent();
         GhostUIWidgetInstance = nullptr;
-    }
-
-    if (WaitRoomWidgetInstance)
-    {
-        WaitRoomWidgetInstance->RemoveFromParent();
-        WaitRoomWidgetInstance = nullptr;
     }
 
     if (LobbyPanelWidget)

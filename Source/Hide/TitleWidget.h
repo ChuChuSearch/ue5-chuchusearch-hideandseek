@@ -47,6 +47,10 @@ private:
     UFUNCTION()
     void OnJoinClicked();
 
+    // 접속 중 "취소"
+    void CancelConnect();
+    void SetJoinButtonLabel(const FString& Label);
+
     UFUNCTION()
     void OnNicknameCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
@@ -89,4 +93,5 @@ private:
     bool bHostHelpOpen = false;
 
     bool bLeaving = false;
+    bool bConnecting = false;
 };

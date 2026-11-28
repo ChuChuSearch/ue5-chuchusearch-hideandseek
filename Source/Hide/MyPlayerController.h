@@ -85,9 +85,6 @@ public:
     // 누르고 있던 공격 입력(길게 누르기 포함)을 취소한다. 설정 창을 열고 닫을 때 사용.
     void CancelAttackInput();
 
-    UFUNCTION(BlueprintCallable)
-    void UI_RequestStartGame();
-
     // ===== 대기실 채팅 =====
     void SendLobbyChat(const FString& Message);
 
@@ -116,9 +113,6 @@ public:
 
     // 역할 지망 바꾸기(대기실 역할 선택 버튼에서)
     void RequestSetPreference(ERolePreference InPreference);
-
-    // 대기실 준비 / 준비 취소(방장은 해당 없음)
-    void RequestToggleReady();
 
     // ===== 대기실 로비 맵 장치 =====
     // 지금 E를 누르면 상호작용할 장치(가장 가까운 것)
@@ -232,9 +226,6 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputAction* IA_Lock = nullptr;
 
-    UPROPERTY(EditDefaultsOnly, Category = "UI")
-    TSubclassOf<UUserWidget> WBP_WaitRoom = nullptr;
-
     UPROPERTY(EditDefaultsOnly, Category = "Input")
     UInputAction* IA_GhostPlacementRefresh = nullptr;
 
@@ -275,10 +266,7 @@ private:
     UPROPERTY()
     AActor* OutlinedActor = nullptr;
 
-    UPROPERTY()
-    UUserWidget* WaitRoomWidgetInstance = nullptr;
-
-    // 대기실 오른쪽 참가자 목록 + 채팅(WBP_WaitRoom 위에 띄운다)
+    // 대기실 채팅(왼쪽 아래) + Tab 참가자 목록
     UPROPERTY(Transient)
     ULobbyPanelWidget* LobbyPanelWidget = nullptr;
 
@@ -321,9 +309,6 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<ULobbyHudWidget> LobbyHudWidget = nullptr;
-
-    UFUNCTION(Server, Reliable)
-    void ServerRequestStartGame();
 
     void CloseWaitRoomUI();
     void OnAttackPressed(const FInputActionValue& Value);
@@ -510,13 +495,7 @@ private:
     UPROPERTY(Transient)
     UEliminationNoticeWidget* EliminationNoticeWidget = nullptr;
 
-    // ===== 대기실 닉네임: 입력하는 대로 서버에 보낸다(확인 버튼 없음) =====
-    UFUNCTION()
-    void OnNicknameTextChanged(const FText& Text);
-
-    UFUNCTION()
-    void OnNicknameTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
-
+    // ===== 대기실 닉네임: 처음 화면에서 정한 닉네임을 서버에 보낸다 =====
     void SendPendingNickname();
 
     FTimerHandle TH_NicknameSend;

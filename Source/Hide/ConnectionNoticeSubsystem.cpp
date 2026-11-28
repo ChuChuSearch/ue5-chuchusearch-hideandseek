@@ -68,11 +68,22 @@ void UConnectionNoticeSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver*
         return;
     }
 
+    // 접속 화면에서 "취소"를 눌러 끊은 경우는 안내하지 않는다
+    if (IsSuppressingFailures())
+    {
+        return;
+    }
+
     switch (FailureType)
     {
+    case ENetworkFailure::OutdatedClient:
+    case ENetworkFailure::OutdatedServer:
+        SetPending(TEXT("게임 버전이 서버와 달라요.\n최신 버전을 받아서 다시 접속해 주세요."));
+        break;
     case ENetworkFailure::ConnectionLost:
     case ENetworkFailure::ConnectionTimeout:
-        SetPending(TEXT("방장과의 연결이 끊어졌어요.\n방장이 게임을 나갔거나 인터넷 연결이 불안정해요."));
+        // 전용 서버면 서버가, 방 만들기로 연 방이면 방장이 서버다
+        SetPending(TEXT("서버와의 연결이 끊어졌어요.\n서버(방장)가 꺼졌거나 인터넷 연결이 불안정해요."));
         break;
     default:
         SetPending(TEXT("서버와 연결할 수 없어요.\n주소를 확인하고 다시 시도해 주세요."));
@@ -82,6 +93,10 @@ void UConnectionNoticeSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver*
 
 void UConnectionNoticeSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
 {
+    if (IsSuppressingFailures())
+    {
+        return;
+    }
     if (World && !IsMyWorld(World))
     {
         return;
@@ -104,4 +119,15 @@ void UConnectionNoticeSubsystem::HandlePostLoadMap(UWorld* World)
         Popup->AddToViewport(5000);
     }
     PendingMessage.Empty();
+}
+
+void UConnectionNoticeSubsystem::SuppressFailuresForCancel()
+{
+    SuppressFailuresUntil = FPlatformTime::Seconds() + 5.0;
+    PendingMessage.Empty();
+}
+
+bool UConnectionNoticeSubsystem::IsSuppressingFailures() const
+{
+    return FPlatformTime::Seconds() < SuppressFailuresUntil;
 }

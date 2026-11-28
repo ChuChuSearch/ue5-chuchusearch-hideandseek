@@ -18,6 +18,9 @@ public:
     virtual void Initialize(FSubsystemCollectionBase& Collection) override;
     virtual void Deinitialize() override;
 
+    // 접속 화면에서 "취소"로 접속을 끊을 때: 잠깐 동안 나오는 실패 알림은 띄우지 않는다
+    void SuppressFailuresForCancel();
+
 private:
     void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
     void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
@@ -27,6 +30,8 @@ private:
     void SetPending(const FString& Message);
 
     FString PendingMessage;
+    double SuppressFailuresUntil = 0.0;
+    bool IsSuppressingFailures() const;
 
     FDelegateHandle NetworkFailureHandle;
     FDelegateHandle TravelFailureHandle;

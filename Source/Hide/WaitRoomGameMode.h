@@ -82,6 +82,11 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "Lobby|Practice", meta = (ClampMin = "1"))
     int32 MaxLobbyGhostPlacedProps = 12;
 
+    // 로비에 아무도 없는 채로 이만큼(초) 지나면 게임 설정(단계 시간, 최대 인원)을 처음 값으로 되돌린다.
+    // 게임이 끝나 로비로 돌아올 때 잠깐 비는 사이에는 되돌리지 않도록 여유를 둔다.
+    UPROPERTY(EditDefaultsOnly, Category = "Lobby", meta = (ClampMin = "2.0"))
+    float EmptyLobbyResetSeconds = 30.f;
+
     // 유령이 로비에 물체를 놓았다(개수 제한용)
     void NotifyLobbyGhostPlacedProp(AActor* Prop);
 
@@ -124,6 +129,13 @@ private:
 
     // 물체를 다시 놓는다. 그 자리에 사람이 있으면 조금 뒤 다시 시도.
     void TryRespawnLobbyProp(TSubclassOf<AActor> PropClass, FTransform Transform);
+
+    // 로비가 비어 있는 시간을 재다가 게임 설정을 처음 값으로 되돌린다
+    void CheckEmptyLobby();
+    FTimerHandle TH_EmptyLobbyCheck;
+    static constexpr float EmptyLobbyCheckInterval = 2.f;
+    float EmptyLobbySeconds = 0.f;
+    bool bSettingsResetWhileEmpty = false;
 
     // 유령 체험 물체 후보 채우기
     void TopUpLobbyGhostPool();

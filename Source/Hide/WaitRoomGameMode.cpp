@@ -142,6 +142,41 @@ void AWaitRoomGameMode::BeginPlay()
     // 유령 구멍 체험용 물체 후보를 미리 채우고, 놓아서 줄어들면 다시 채운다
     TopUpLobbyGhostPool();
     GetWorldTimerManager().SetTimer(TH_LobbyGhostPool, this, &AWaitRoomGameMode::TopUpLobbyGhostPool, 2.f, true);
+
+    // 로비가 한동안 비어 있으면 게임 설정을 처음 값으로(다음 그룹이 깨끗한 상태로 시작)
+    GetWorldTimerManager().SetTimer(TH_EmptyLobbyCheck, this, &AWaitRoomGameMode::CheckEmptyLobby, EmptyLobbyCheckInterval, true);
+}
+
+void AWaitRoomGameMode::CheckEmptyLobby()
+{
+    const int32 Players = GameState ? GameState->PlayerArray.Num() : 0;
+    if (Players > 0)
+    {
+        EmptyLobbySeconds = 0.f;
+        bSettingsResetWhileEmpty = false;
+        return;
+    }
+
+    // 게임이 끝나 로비로 돌아올 때는 잠깐 아무도 없다가 다시 들어오므로, 바로 되돌리지 않고 조금 기다린다
+    EmptyLobbySeconds += EmptyLobbyCheckInterval;
+    if (bSettingsResetWhileEmpty || EmptyLobbySeconds < EmptyLobbyResetSeconds)
+    {
+        return;
+    }
+    bSettingsResetWhileEmpty = true;
+
+    ULobbySettingsSubsystem* Sub = GetSettingsSubsystem();
+    if (!Sub)
+    {
+        return;
+    }
+    const FLobbyGameSettings Defaults = FLobbySettingRules::Sanitize(Sub->GetDefaults());
+    if (!(Defaults == Sub->GetSettings()))
+    {
+        Sub->SetSettings(Defaults);
+        BroadcastLobbyGameSettings();
+        UE_LOG(LogTemp, Log, TEXT("Lobby empty for %.0fs: game settings reset to defaults"), EmptyLobbySeconds);
+    }
 }
 
 void AWaitRoomGameMode::TopUpLobbyGhostPool()
